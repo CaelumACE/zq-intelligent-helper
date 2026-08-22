@@ -4,8 +4,10 @@ import Header from './components/Header'
 import ChatInput from './components/ChatInput'
 import MessageList from './components/MessageList'
 import WelcomeScreen from './components/WelcomeScreen'
-import type { Message, Conversation } from './types'
+import type { Message, Conversation, Reference } from './types'
 import './App.css'
+
+const WELCOME_GREETING = '你好，我是政企智能助手。您可以问我政策问题、让我帮您写公文，也可以了解办事流程。请问今天想了解什么？'
 
 function App() {
   const [messages, setMessages] = useState<Message[]>([])
@@ -14,7 +16,6 @@ function App() {
   const [isLoading, setIsLoading] = useState(false)
   const [currentView, setCurrentView] = useState<'chat' | 'home'>('home')
 
-  // 加载历史会话
   useEffect(() => {
     loadConversations()
   }, [])
@@ -29,6 +30,38 @@ function App() {
     }
   }
 
+  const appendAssistant = (
+    id: string,
+    chunk: string,
+    refs?: Reference[],
+    replace?: boolean,
+  ) => {
+    setMessages(prev => {
+      const existing = prev.find(m => m.id === id)
+      if (existing) {
+        return prev.map(m =>
+          m.id === id
+            ? {
+                ...m,
+                content: replace ? chunk : m.content + chunk,
+                references: refs !== undefined ? refs : m.references,
+              }
+            : m,
+        )
+      }
+      return [
+        ...prev,
+        {
+          id,
+          role: 'assistant' as const,
+          content: chunk,
+          timestamp: Date.now(),
+          references: refs,
+        },
+      ]
+    })
+  }
+
   const handleSendMessage = async (content: string) => {
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -36,62 +69,97 @@ function App() {
       content,
       timestamp: Date.now(),
     }
+    const assistantId = (Date.now() + 1).toString()
     const nextMessages = [...messages, userMessage]
     setMessages(nextMessages)
     setCurrentView('chat')
     setIsLoading(true)
 
+    let sessionId = currentSessionId
+    let references: Reference[] | undefined
+    let started = false
+
     try {
-      // 若已有会话历史，传完整历史给后端；否则传当前 session_id
       const history = nextMessages.filter(m => m.role !== 'system').map(m => ({
         role: m.role,
         content: m.content,
       }))
 
-      const response = await fetch('/api/chat', {
+      const response = await fetch('/api/chat/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: content,
-          session_id: currentSessionId || undefined,
+          session_id: sessionId || undefined,
           history,
         }),
       })
 
-      const data = await response.json()
-
-      if (data.session_id) {
-        setCurrentSessionId(data.session_id)
+      if (!response.ok || !response.body) {
+        throw new Error(`HTTP ${response.status}`)
       }
 
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: data.content,
-        timestamp: Date.now(),
-        references: data.references,
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+
+        let boundary = buffer.indexOf('\n\n')
+        while (boundary !== -1) {
+          const block = buffer.slice(0, boundary)
+          buffer = buffer.slice(boundary + 2)
+
+          for (const line of block.split('\n')) {
+            if (!line.startsWith('data:')) continue
+            const payload = line.slice(5).trim()
+            if (!payload || payload === '[DONE]') continue
+
+            let evt: { type?: string; content?: string; message?: string; references?: Reference[]; session_id?: string }
+            try {
+              evt = JSON.parse(payload)
+            } catch {
+              continue
+            }
+
+            if (evt.type === 'meta') {
+              if (evt.session_id) {
+                sessionId = evt.session_id
+                setCurrentSessionId(evt.session_id)
+              }
+              if (evt.references) references = evt.references
+            } else if (evt.type === 'delta' && evt.content) {
+              if (!started) {
+                started = true
+                setIsLoading(false)
+                appendAssistant(assistantId, evt.content, references)
+              } else {
+                appendAssistant(assistantId, evt.content)
+              }
+            } else if (evt.type === 'error' && evt.message) {
+              if (!started) {
+                started = true
+                setIsLoading(false)
+              }
+              appendAssistant(assistantId, evt.message, undefined, true)
+            }
+          }
+
+          boundary = buffer.indexOf('\n\n')
+        }
       }
-      setMessages(prev => [...prev, assistantMessage])
+
+      if (started) {
+        appendAssistant(assistantId, '', references)
+      }
       loadConversations()
     } catch (error) {
       console.error('Chat error:', error)
-      try {
-        const mockResponse = await fetch('/api/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: content, history: [userMessage] }),
-        })
-        const data = await mockResponse.json()
-        const assistantMessage: Message = {
-          id: (Date.now() + 1).toString(),
-          role: 'assistant',
-          content: data.content,
-          timestamp: Date.now(),
-          references: data.references,
-        }
-        setMessages(prev => [...prev, assistantMessage])
-      } catch (e2) {
-        console.error('fallback error', e2)
+      if (!started) {
+        appendAssistant(assistantId, '抱歉，服务暂时不可用，请稍后重试。')
       }
     } finally {
       setIsLoading(false)
@@ -99,9 +167,16 @@ function App() {
   }
 
   const handleNewChat = () => {
-    setMessages([])
+    setMessages([
+      {
+        id: 'welcome',
+        role: 'assistant',
+        content: WELCOME_GREETING,
+        timestamp: Date.now(),
+      },
+    ])
     setCurrentSessionId(null)
-    setCurrentView('home')
+    setCurrentView('chat')
   }
 
   const normalizeMessages = (raw: Message[], sessionId: string): Message[] => {
@@ -160,7 +235,14 @@ function App() {
           {currentView === 'home' && messages.length === 0 ? (
             <WelcomeScreen onQuickAction={handleSendMessage} />
           ) : (
-            <MessageList messages={messages} isLoading={isLoading} />
+            <MessageList
+              messages={
+                messages.length === 0
+                  ? [{ id: 'welcome', role: 'assistant', content: WELCOME_GREETING, timestamp: Date.now() }]
+                  : messages
+              }
+              isLoading={isLoading}
+            />
           )}
         </main>
 

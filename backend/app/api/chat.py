@@ -1,10 +1,16 @@
 """对话 API"""
+import json
 import time
+from typing import List
+
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
+
 from app.models import ChatRequest, ChatResponse, Reference, ChatMessage
 from app.services.knowledge_service import knowledge_service
 from app.services.llm_service import LLMService
 from app.services.session_store import session_store
+from app.core.config import settings
 from app.core.logger import logger
 
 router = APIRouter()
@@ -47,18 +53,48 @@ OUT_OF_SCOPE_RESPONSE = (
 )
 
 
+def _resolve_session_id(request: ChatRequest) -> str:
+    session_id = request.session_id
+    if not session_id:
+        session_id = session_store.create()["id"]
+    elif not session_store.get(session_id):
+        session_id = session_store.create()["id"]
+    return session_id
+
+
+def _build_messages(request: ChatRequest, session_id: str, intent: str, context: str):
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    if intent == "writing":
+        messages.append({"role": "system", "content": WRITING_PROMPT_EXTRA})
+    elif intent == "service":
+        messages.append({"role": "system", "content": SERVICE_PROMPT_EXTRA})
+    else:
+        messages.append({"role": "system", "content": QA_PROMPT_EXTRA})
+
+    if context:
+        messages.append({"role": "system", "content": f"参考资料：\n{context}"})
+
+    history = []
+    if request.history:
+        history = [m.to_dict() if isinstance(m, ChatMessage) else m for m in request.history]
+    else:
+        history = session_store.get_history(session_id)
+
+    for msg in history[-6:]:
+        if isinstance(msg, dict):
+            messages.append({"role": msg.get("role", "user"), "content": msg.get("content", "")})
+
+    messages.append({"role": "user", "content": request.message})
+    return messages
+
+
 @router.post("", response_model=ChatResponse)
 async def chat(request: ChatRequest):
-    """对话接口（RAG 增强 + 会话持久化 + 意图路由）"""
+    """非流式对话接口（RAG 增强 + 会话持久化 + 双通道兜底）"""
     start_time = time.time()
 
     try:
-        # 会话管理
-        session_id = request.session_id
-        if not session_id:
-            session_id = session_store.create()["id"]
-        elif not session_store.get(session_id):
-            session_id = session_store.create()["id"]
+        session_id = _resolve_session_id(request)
 
         # 1. 知识库检索 + 意图识别
         retrieval_start = time.time()
@@ -66,7 +102,7 @@ async def chat(request: ChatRequest):
         search_results = knowledge_service.search(request.message, top_k=5)
         retrieval_time = (time.time() - retrieval_start) * 1000
 
-        # 2. 无检索命中的拒答保护：不调用 LLM，直接返回，避免编造
+        # 2. 无命中拒答
         if not search_results:
             content = OUT_OF_SCOPE_RESPONSE
             generation_time = 0.0
@@ -75,47 +111,27 @@ async def chat(request: ChatRequest):
         else:
             context = knowledge_service.build_context(request.message, top_k=5)
             references = knowledge_service.get_references(search_results)
+            messages = _build_messages(request, session_id, intent, context)
 
-            # 3. 按意图构建 prompt
-            messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-            if intent == "writing":
-                messages.append({"role": "system", "content": WRITING_PROMPT_EXTRA})
-            elif intent == "service":
-                messages.append({"role": "system", "content": SERVICE_PROMPT_EXTRA})
-            else:
-                messages.append({"role": "system", "content": QA_PROMPT_EXTRA})
-
-            if context:
-                messages.append({
-                    "role": "system",
-                    "content": f"参考资料：\n{context}"
-                })
-
-            # 优先使用已持久化的会话历史，其次使用请求中的临时历史
-            history = []
-            if request.history:
-                history = [m.to_dict() if isinstance(m, ChatMessage) else m for m in request.history]
-            else:
-                history = session_store.get_history(session_id)
-
-            for msg in history[-6:]:
-                if isinstance(msg, dict):
-                    messages.append({"role": msg.get("role", "user"), "content": msg.get("content", "")})
-
-            messages.append({"role": "user", "content": request.message})
-
-            # 4. 调用 LLM
+            # 3. 主通道 + 失败时切 DeepSeek 兜底
             generation_start = time.time()
             try:
                 llm_response = await llm_service.chat(messages, stream=False)
                 content = _extract_content(llm_response)
-                generation_time = (time.time() - generation_start) * 1000
-            except Exception as llm_error:
-                logger.warning(f"LLM 调用失败，使用知识库兜底: {llm_error}")
-                content = _fallback_response(request.message, search_results)
-                generation_time = (time.time() - generation_start) * 1000
+            except Exception as primary_error:
+                logger.warning(f"主通道 LLM 失败，尝试兜底通道: {primary_error}")
+                try:
+                    llm_response = await llm_service.chat(
+                        messages, stream=False,
+                        provider=settings.LLM_FALLBACK_PROVIDER,
+                    )
+                    content = _extract_content(llm_response)
+                except Exception as fallback_error:
+                    logger.warning(f"兜底通道 LLM 也失败，使用知识库兜底: {fallback_error}")
+                    content = _fallback_response(request.message, search_results)
+            generation_time = (time.time() - generation_start) * 1000
 
-        # 5. 持久化本轮对话（引用来源随历史保存）
+        # 4. 持久化会话
         user_msg = {"role": "user", "content": request.message, "timestamp": int(time.time() * 1000)}
         assistant_msg = {"role": "assistant", "content": content, "references": references, "timestamp": int(time.time() * 1000)}
         session_store.add_messages(session_id, [user_msg, assistant_msg])
@@ -136,6 +152,79 @@ async def chat(request: ChatRequest):
     except Exception as e:
         logger.error(f"对话失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/stream")
+async def chat_stream(request: ChatRequest):
+    """流式对话接口（SSE）：首 token 快速回显，降低体感等待"""
+    session_id = _resolve_session_id(request)
+    intent = knowledge_service.classify_intent(request.message)
+    search_results = knowledge_service.search(request.message, top_k=5)
+    references = knowledge_service.get_references(search_results)
+    context = knowledge_service.build_context(request.message, top_k=5)
+
+    # 元信息一次性下发
+    meta = {
+        "session_id": session_id,
+        "intent": intent,
+        "references": references,
+        "hit_count": len(search_results),
+    }
+
+    async def event_stream():
+        # 先发元信息和开始事件，前端可立即显示会话ID与引用数
+        yield f"data: {json.dumps({'type': 'meta', **meta}, ensure_ascii=False)}\n\n"
+
+        if not search_results:
+            yield f"data: {json.dumps({'type': 'error', 'message': OUT_OF_SCOPE_RESPONSE}, ensure_ascii=False)}\n\n"
+            yield "data: [DONE]\n\n"
+            return
+
+        messages = _build_messages(request, session_id, intent, context)
+        accumulated: List[str] = []
+
+        async def stream_provider(provider: str, status: dict):
+            """流式输出单个通道的文本增量，结果写入 status['ok']。"""
+            try:
+                async for delta in await llm_service.chat(messages, stream=True, provider=provider):
+                    if delta:
+                        accumulated.append(delta)
+                        yield f"data: {json.dumps({'type': 'delta', 'content': delta}, ensure_ascii=False)}\n\n"
+                status['ok'] = True
+            except Exception as e:
+                logger.warning(f"provider={provider} 流式失败: {e}")
+                status['ok'] = False
+
+        # 主通道生成；失败或无输出时切换兜底通道
+        status = {'ok': False}
+        async for event in stream_provider(settings.LLM_PROVIDER, status):
+            yield event
+
+        if not status['ok'] or not accumulated:
+            accumulated.clear()
+            status = {'ok': False}
+            async for event in stream_provider(settings.LLM_FALLBACK_PROVIDER, status):
+                yield event
+
+        # 双通道都不可用时，仅罗列知识库原文，不编造
+        if not accumulated:
+            fallback_text = _fallback_response(request.message, search_results)
+            accumulated.append(fallback_text)
+            yield f"data: {json.dumps({'type': 'delta', 'content': fallback_text}, ensure_ascii=False)}\n\n"
+
+        full_text = "".join(accumulated)
+        user_msg = {"role": "user", "content": request.message, "timestamp": int(time.time() * 1000)}
+        assistant_msg = {"role": "assistant", "content": full_text, "references": references, "timestamp": int(time.time() * 1000)}
+        session_store.add_messages(session_id, [user_msg, assistant_msg])
+
+        yield f"data: {json.dumps({'type': 'done', 'session_id': session_id, 'references': references}, ensure_ascii=False)}\n\n"
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.get("/sessions")

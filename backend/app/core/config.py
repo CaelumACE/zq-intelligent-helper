@@ -10,6 +10,7 @@ class Settings:
     """应用配置"""
     # LLM 配置
     LLM_PROVIDER = os.getenv('LLM_PROVIDER', 'minimax')
+    LLM_FALLBACK_PROVIDER = os.getenv('LLM_FALLBACK_PROVIDER', 'deepseek')
     
     # MiniMax 配置
     MINIMAX_API_KEY = os.getenv('MINIMAX_API_KEY', '')
