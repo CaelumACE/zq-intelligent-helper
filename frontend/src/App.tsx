@@ -7,6 +7,8 @@ import WelcomeScreen from './components/WelcomeScreen'
 import type { Message, Conversation, Reference } from './types'
 import './App.css'
 
+const API_BASE = __API_BASE__
+
 const WELCOME_GREETING = '你好，我是政企智能助手。您可以问我政策问题、让我帮您写公文，也可以了解办事流程。请问今天想了解什么？'
 
 function App() {
@@ -15,6 +17,7 @@ function App() {
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [currentView, setCurrentView] = useState<'chat' | 'home'>('home')
+  const [sidebarOpen, setSidebarOpen] = useState(false)
 
   useEffect(() => {
     loadConversations()
@@ -22,7 +25,7 @@ function App() {
 
   const loadConversations = async () => {
     try {
-      const res = await fetch('/api/chat/sessions')
+      const res = await fetch(`${API_BASE}/chat/sessions`)
       const data = await res.json()
       setConversations(data.sessions || [])
     } catch (e) {
@@ -74,6 +77,7 @@ function App() {
     setMessages(nextMessages)
     setCurrentView('chat')
     setIsLoading(true)
+    setSidebarOpen(false)
 
     let sessionId = currentSessionId
     let references: Reference[] | undefined
@@ -85,7 +89,7 @@ function App() {
         content: m.content,
       }))
 
-      const response = await fetch('/api/chat/stream', {
+      const response = await fetch(`${API_BASE}/chat/stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -177,6 +181,7 @@ function App() {
     ])
     setCurrentSessionId(null)
     setCurrentView('chat')
+    setSidebarOpen(false)
   }
 
   const normalizeMessages = (raw: Message[], sessionId: string): Message[] => {
@@ -190,12 +195,13 @@ function App() {
 
   const handleSelectConversation = async (id: string) => {
     try {
-      const res = await fetch(`/api/chat/sessions/${id}`)
+      const res = await fetch(`${API_BASE}/chat/sessions/${id}`)
       const data = await res.json()
       setCurrentSessionId(id)
       const normalized = normalizeMessages(data.messages || [], id)
       setMessages(normalized)
       setCurrentView(normalized.length ? 'chat' : 'home')
+      setSidebarOpen(false)
     } catch (e) {
       console.error('加载会话详情失败', e)
     }
@@ -204,7 +210,7 @@ function App() {
   const handleDeleteConversation = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation()
     try {
-      await fetch(`/api/chat/sessions/${id}`, { method: 'DELETE' })
+      await fetch(`${API_BASE}/chat/sessions/${id}`, { method: 'DELETE' })
       if (id === currentSessionId) {
         handleNewChat()
       }
@@ -214,21 +220,47 @@ function App() {
     }
   }
 
-  return (
-    <div className="flex h-screen overflow-hidden">
-      <Sidebar
-        currentView={currentView}
-        conversations={conversations}
-        currentSessionId={currentSessionId}
-        onNewChat={handleNewChat}
-        onSelectConversation={handleSelectConversation}
-        onDeleteConversation={handleDeleteConversation}
-      />
+  const welcomeMessage: Message = {
+    id: 'welcome',
+    role: 'assistant',
+    content: WELCOME_GREETING,
+    timestamp: Date.now(),
+  }
 
-      <div className="flex-1 flex flex-col overflow-hidden">
+  return (
+    <div className="app-shell">
+      {/* PC 端固定侧边栏 */}
+      <div className="hidden md:block">
+        <Sidebar
+          currentView={currentView}
+          conversations={conversations}
+          currentSessionId={currentSessionId}
+          onNewChat={handleNewChat}
+          onSelectConversation={handleSelectConversation}
+          onDeleteConversation={handleDeleteConversation}
+        />
+      </div>
+
+      {/* 移动端抽屉侧边栏 */}
+      {sidebarOpen && (
+        <div className="mobile-overlay" onClick={() => setSidebarOpen(false)} />
+      )}
+      <div className={`mobile-drawer md:hidden ${sidebarOpen ? 'open' : ''}`}>
+        <Sidebar
+          currentView={currentView}
+          conversations={conversations}
+          currentSessionId={currentSessionId}
+          onNewChat={handleNewChat}
+          onSelectConversation={handleSelectConversation}
+          onDeleteConversation={handleDeleteConversation}
+        />
+      </div>
+
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <Header
           title={currentView === 'home' ? '政企智能助手' : '对话'}
           subtitle="为您提供政策咨询、公文写作、办事指引等服务"
+          onMenu={() => setSidebarOpen(true)}
         />
 
         <main className="flex-1 overflow-y-auto">
@@ -236,11 +268,7 @@ function App() {
             <WelcomeScreen onQuickAction={handleSendMessage} />
           ) : (
             <MessageList
-              messages={
-                messages.length === 0
-                  ? [{ id: 'welcome', role: 'assistant', content: WELCOME_GREETING, timestamp: Date.now() }]
-                  : messages
-              }
+              messages={messages.length === 0 ? [welcomeMessage] : messages}
               isLoading={isLoading}
             />
           )}

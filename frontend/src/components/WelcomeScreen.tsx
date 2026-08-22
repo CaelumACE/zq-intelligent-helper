@@ -19,7 +19,7 @@ export default function WelcomeScreen({ onQuickAction }: WelcomeScreenProps) {
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 animate-fade-in" style={{ animationDelay: '0.1s' }}>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 animate-fade-in" style={{ animationDelay: '0.1s' }}>
         {quickActions.map((action) => (
           <button
             key={action.id}

@@ -1,11 +1,23 @@
 interface HeaderProps {
   title: string;
   subtitle?: string;
+  onMenu?: () => void;
 }
 
-export default function Header({ title, subtitle }: HeaderProps) {
+export default function Header({ title, subtitle, onMenu }: HeaderProps) {
   return (
-    <header className="h-14 bg-white border-b border-[var(--border)] flex items-center px-6 shadow-sm">
+    <header className="h-14 bg-white border-b border-[var(--border)] flex items-center px-4 md:px-6 shadow-sm">
+      {onMenu && (
+        <button
+          onClick={onMenu}
+          className="md:hidden mr-2 p-1.5 text-[var(--text-secondary)] hover:text-[var(--primary)] rounded-lg hover:bg-gray-100"
+          aria-label="打开菜单"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </button>
+      )}
       <div>
         <h2 className="text-base font-semibold text-[var(--text-primary)]">{title}</h2>
         {subtitle && <p className="text-xs text-[var(--text-secondary)]">{subtitle}</p>}
