@@ -13,3 +13,6 @@ venv/
 data/conversations.json
 data/embeddings_cache.json
 scripts/model_compare_result.json
+
+# 本地 UI 截图/参考图不入库
+frontend/*.png
