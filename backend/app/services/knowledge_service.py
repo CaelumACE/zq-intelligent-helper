@@ -115,19 +115,31 @@ class KnowledgeService:
         return results[:top_k]
     
     def _keyword_score(self, query: str, text: str) -> float:
-        """简单关键词匹配打分"""
+        """轻量中文关键词匹配打分（字符 n-gram）"""
         score = 0.0
-        
-        # 完整匹配
-        if query in text:
-            score += 3.0
-        
-        # 分词匹配（简单处理）
-        keywords = [k for k in query.replace('，', ' ').replace('、', ' ').split() if len(k) >= 2]
-        for kw in keywords:
-            if kw in text:
-                score += 1.0
-        
+
+        # 转小写并去除常见疑问词，降低噪声
+        clean = query.lower().replace('？', '').replace('?', '').replace('，', '').replace('、', '')
+        stopwords = {'哪些', '什么', '怎么', '如何', '请问', '帮我', '一下', '有没有', '是不是', '为什么'}
+        for word in stopwords:
+            clean = clean.replace(word, '')
+
+        # 完整命中
+        if clean and clean in text:
+            score += 5.0
+
+        # 连续 2-4 字 n-gram 匹配
+        matched = set()
+        for n in range(2, 5):
+            for i in range(len(clean) - n + 1):
+                gram = clean[i:i+n]
+                if gram in matched:
+                    continue
+                if gram in text:
+                    matched.add(gram)
+                    weight = 1.0 if n == 2 else (1.5 if n == 3 else 2.0)
+                    score += weight
+
         return score
     
     def get_all_documents(self) -> Dict[str, List]:

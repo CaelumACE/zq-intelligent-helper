@@ -10,7 +10,7 @@ class LLMService:
     
     def __init__(self):
         self.provider = settings.LLM_PROVIDER
-        self.config = settings.get_llm_config()
+        self.config = settings.llm_config
         logger.info(f"LLM Service initialized with provider: {self.provider}")
     
     async def chat(self, messages: list, stream: bool = False) -> dict | AsyncGenerator:
