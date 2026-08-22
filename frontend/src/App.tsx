@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Sidebar from './components/Sidebar'
 import Header from './components/Header'
 import ChatInput from './components/ChatInput'
@@ -18,6 +18,9 @@ function App() {
   const [isLoading, setIsLoading] = useState(false)
   const [currentView, setCurrentView] = useState<'chat' | 'home'>('home')
   const [sidebarOpen, setSidebarOpen] = useState(false)
+
+  const activeRequestRef = useRef<AbortController | null>(null)
+  const activeAssistantIdRef = useRef<string | null>(null)
 
   useEffect(() => {
     loadConversations()
@@ -39,6 +42,7 @@ function App() {
     refs?: Reference[],
     replace?: boolean,
   ) => {
+    if (activeAssistantIdRef.current !== id) return
     setMessages(prev => {
       const existing = prev.find(m => m.id === id)
       if (existing) {
@@ -73,6 +77,7 @@ function App() {
       timestamp: Date.now(),
     }
     const assistantId = (Date.now() + 1).toString()
+    activeAssistantIdRef.current = assistantId
     const nextMessages = [...messages, userMessage]
     setMessages(nextMessages)
     setCurrentView('chat')
@@ -82,6 +87,7 @@ function App() {
     let sessionId = currentSessionId
     let references: Reference[] | undefined
     let started = false
+    let controller: AbortController | null = null
 
     try {
       const history = nextMessages.filter(m => m.role !== 'system').map(m => ({
@@ -89,9 +95,17 @@ function App() {
         content: m.content,
       }))
 
+      controller = new AbortController()
+      const previousController = activeRequestRef.current
+      if (previousController) {
+        previousController.abort()
+      }
+      activeRequestRef.current = controller
+
       const response = await fetch(`${API_BASE}/chat/stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           message: content,
           session_id: sessionId || undefined,
@@ -161,16 +175,31 @@ function App() {
       }
       loadConversations()
     } catch (error) {
-      console.error('Chat error:', error)
-      if (!started) {
-        appendAssistant(assistantId, '抱歉，服务暂时不可用，请稍后重试。')
+      if ((error as Error)?.name === 'AbortError') {
+        console.log('Chat stream aborted', assistantId)
+      } else {
+        console.error('Chat error:', error)
+        if (!started) {
+          appendAssistant(assistantId, '抱歉，服务暂时不可用，请稍后重试。')
+        }
       }
     } finally {
+      if (activeRequestRef.current === controller) {
+        activeRequestRef.current = null
+      }
+      if (activeAssistantIdRef.current === assistantId) {
+        activeAssistantIdRef.current = null
+      }
       setIsLoading(false)
     }
   }
 
   const handleNewChat = () => {
+    if (activeRequestRef.current) {
+      activeRequestRef.current.abort()
+      activeRequestRef.current = null
+    }
+    activeAssistantIdRef.current = null
     setMessages([
       {
         id: 'welcome',
@@ -194,6 +223,11 @@ function App() {
   }
 
   const handleSelectConversation = async (id: string) => {
+    if (activeRequestRef.current) {
+      activeRequestRef.current.abort()
+      activeRequestRef.current = null
+    }
+    activeAssistantIdRef.current = null
     try {
       const res = await fetch(`${API_BASE}/chat/sessions/${id}`)
       const data = await res.json()
