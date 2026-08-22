@@ -303,7 +303,7 @@ function App() {
           onWriting={() => setWritingOpen(true)}
         />
 
-        <div className="chat-stream">
+        <div className={`chat-stream ${currentView === 'home' && messages.length === 0 ? 'home' : ''}`}>
           {currentView === 'home' && messages.length === 0 ? (
             <WelcomeScreen onQuickAction={handleSendMessage} />
           ) : (
@@ -315,7 +315,7 @@ function App() {
           )}
         </div>
 
-        <ChatInput onSend={handleSendMessage} disabled={isLoading} model={model} />
+        <ChatInput onSend={handleSendMessage} disabled={isLoading} model={model} messages={messages} />
 
         <WritingPanel
           open={writingOpen}
