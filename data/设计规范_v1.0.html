@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>政企智能助手 · 设计规范 v1.0</title>
+<style>
+  :root{
+    /* 品牌主色 - 政务蓝 */
+    --primary:#1D5BBF;
+    --primary-strong:#164A9E;
+    --primary-soft:#E8EFFB;
+    --navy:#0E2745;
+    --navy-800:#15335A;
+    /* 中性色 */
+    --bg:#F4F6FA;
+    --surface:#FFFFFF;
+    --border:#E3E8EF;
+    --text-1:#1A2433;
+    --text-2:#56627A;
+    --text-3:#8A94A6;
+    /* 功能色 */
+    --success:#1E9E6A;
+    --warning:#D98A1F;
+    --danger:#D64545;
+    /* 字体 */
+    --font:"PingFang SC","Microsoft YaHei","Source Han Sans SC",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    /* 圆角 */
+    --r-sm:4px; --r-md:6px; --r-lg:10px;
+    /* 阴影 */
+    --shadow-sm:0 1px 2px rgba(14,39,69,.06);
+    --shadow-md:0 4px 14px rgba(14,39,69,.08);
+    --shadow-lg:0 10px 32px rgba(14,39,69,.12);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:var(--font);background:var(--bg);color:var(--text-1);line-height:1.6;-webkit-font-smoothing:antialiased}
+  .topbar{background:var(--navy);color:#fff;padding:28px 48px}
+  .topbar .kicker{font-size:13px;color:#9FB6D4;letter-spacing:.08em;text-transform:uppercase}
+  .topbar h1{font-size:26px;font-weight:600;margin-top:8px}
+  .topbar .meta{margin-top:10px;font-size:13px;color:#C2D1E4}
+  .meta .tag{display:inline-block;background:rgba(255,255,255,.14);border-radius:20px;padding:2px 12px;margin-right:8px}
+  main{max-width:1180px;margin:0 auto;padding:32px 24px 80px}
+  section{margin-bottom:44px}
+  h2{font-size:20px;font-weight:600;color:var(--navy);padding-bottom:10px;border-bottom:2px solid var(--border);margin-bottom:20px}
+  h2 .num{color:var(--primary);margin-right:10px}
+  .grid{display:grid;gap:16px}
+  .g3{grid-template-columns:repeat(auto-fill,minmax(220px,1fr))}
+  .g2{grid-template-columns:repeat(auto-fill,minmax(320px,1fr))}
+  .swatch{border:1px solid var(--border);border-radius:var(--r-lg);overflow:hidden;background:var(--surface);box-shadow:var(--shadow-sm)}
+  .swatch .color{height:72px}
+  .swatch .info{padding:10px 14px}
+  .swatch .info b{display:block;font-size:14px}
+  .swatch .info span{font-size:12px;color:var(--text-3)}
+  .swatch .info code{font-size:11px;color:var(--text-2);background:#F1F4F8;padding:1px 6px;border-radius:4px}
+  table{width:100%;border-collapse:collapse;background:var(--surface);border-radius:var(--r-lg);overflow:hidden;box-shadow:var(--shadow-sm)}
+  th,td{padding:12px 16px;text-align:left;border-bottom:1px solid var(--border);font-size:14px}
+  th{background:#F0F4FA;color:var(--text-2);font-weight:600;font-size:13px}
+  tr:last-child td{border-bottom:none}
+  .demo{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:24px;box-shadow:var(--shadow-sm);margin-bottom:14px;display:flex;flex-wrap:wrap;gap:14px;align-items:center}
+  .btn{font-family:var(--font);display:inline-flex;align-items:center;gap:6px;font-size:14px;padding:9px 18px;border-radius:var(--r-md);border:1px solid transparent;cursor:pointer;transition:all .15s;font-weight:500}
+  .btn-primary{background:var(--primary);color:#fff}
+  .btn-primary:hover{background:var(--primary-strong)}
+  .btn-outline{background:var(--surface);border-color:var(--border);color:var(--text-1)}
+  .btn-outline:hover{border-color:var(--primary);color:var(--primary)}
+  .btn-ghost{background:transparent;color:var(--text-2)}
+  .btn-ghost:hover{background:#F0F4FA}
+  .btn-danger{background:var(--danger);color:#fff}
+  .btn-sm{padding:5px 12px;font-size:13px}
+  .input{font-family:var(--font);width:100%;max-width:280px;font-size:14px;padding:9px 12px;border:1px solid var(--border);border-radius:var(--r-md);background:var(--surface);color:var(--text-1);transition:border .15s}
+  .input:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px rgba(29,91,191,.12)}
+  .tag{display:inline-block;font-size:12px;padding:3px 10px;border-radius:20px;font-weight:500}
+  .tag-blue{background:var(--primary-soft);color:var(--primary)}
+  .tag-green{background:#E5F5EE;color:var(--success)}
+  .tag-orange{background:#FBF0DE;color:var(--warning)}
+  .tag-red{background:#FBE9E9;color:var(--danger)}
+  .tag-gray{background:#EFF2F6;color:var(--text-2)}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:20px;box-shadow:var(--shadow-sm)}
+  .card h4{font-size:15px;color:var(--text-1);margin-bottom:6px}
+  .card p{font-size:13px;color:var(--text-3)}
+  .note{background:#F5F9FF;border-left:4px solid var(--primary);padding:14px 18px;border-radius:var(--r-sm);font-size:13px;color:var(--text-2)}
+  /* 引用溯源 + 状态组件 */
+  .cite{font-size:11px;color:var(--primary);background:var(--primary-soft);border-radius:4px;padding:0 5px;margin:0 2px;vertical-align:super;cursor:pointer;font-weight:600}
+  .source-card{border:1px solid var(--border);border-left:4px solid var(--primary);border-radius:var(--r-sm);padding:10px 14px;background:#F8FAFD;margin-top:10px;font-size:13px}
+  .src-title{font-weight:600;color:var(--primary);font-size:12px;margin-bottom:4px}
+  .src-body{color:var(--text-2);line-height:1.7}
+  mark{background:#FFE9A8;color:inherit;padding:0 2px;border-radius:2px}
+  .loader{display:inline-block;width:15px;height:15px;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin .7s linear infinite;vertical-align:-2px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .state-box{padding:9px 14px;border-radius:var(--r-md);font-size:13px}
+  .state-refuse{background:#FBF0DE;color:var(--warning)}
+  .state-block{background:#FBE9E9;color:var(--danger)}
+  .state-error{background:#FBE9E9;color:var(--danger)}
+  :focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+  @media (prefers-reduced-motion:reduce){*{transition:none !important;animation:none !important}}
+  @media print{ .topbar{background:#0E2745 !important;-webkit-print-color-adjust:exact} }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="kicker">Design System · v1.0</div>
+  <h1>政企智能助手 · 设计规范</h1>
+  <div class="meta">
+    <span class="tag">政务蓝稳重风</span>
+    <span>制定：界面设计</span>
+    <span style="margin-left:8px">2026-08-22</span>
+  </div>
+</header>
+
+<main>
+  <section>
+    <h2><span class="num">01</span>设计原则</h2>
+    <div class="grid g2">
+      <div class="card"><h4>权威可信</h4><p>以政务蓝为核心，深色导航压阵，界面克制、稳重，传递可靠与安全感。</p></div>
+      <div class="card"><h4>高效清晰</h4><p>信息密度适中，层级分明，核心操作一眼可达，服务政务办公的高频使用场景。</p></div>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="num">02</span>色彩系统</h2>
+    <h3 style="font-size:15px;color:var(--text-2);margin-bottom:14px">品牌色 · 深蓝 + 金色（PRD 指定）</h3>
+    <div class="grid g3">
+      <div class="swatch"><div class="color" style="background:#1A3A6B"></div><div class="info"><b>深蓝主色</b><span>主按钮 / 侧边栏 / 强调</span><code>#1A3A6B</code></div></div>
+      <div class="swatch"><div class="color" style="background:#12304F"></div><div class="info"><b>深蓝·深</b><span>悬停 / 深色文本</span><code>#12304F</code></div></div>
+      <div class="swatch"><div class="color" style="background:#EAF0F8"></div><div class="info"><b>深蓝·浅</b><span>选中背景 / 标签</span><code>#EAF0F8</code></div></div>
+      <div class="swatch"><div class="color" style="background:#C8A45A"></div><div class="info"><b>金色点缀</b><span>Logo / 高亮 / 选中态</span><code>#C8A45A</code></div></div>
+      <div class="swatch"><div class="color" style="background:#F5EDDA"></div><div class="info"><b>金色·浅</b><span>金色背景 / 标签底</span><code>#F5EDDA</code></div></div>
+    </div>
+    <h3 style="font-size:15px;color:var(--text-2);margin:26px 0 14px">中性色</h3>
+    <div class="grid g3">
+      <div class="swatch"><div class="color" style="background:#1A2433"></div><div class="info"><b>文字一级</b><code>#1A2433</code></div></div>
+      <div class="swatch"><div class="color" style="background:#56627A"></div><div class="info"><b>文字二级</b><code>#56627A</code></div></div>
+      <div class="swatch"><div class="color" style="background:#8A94A6"></div><div class="info"><b>文字三级/占位</b><code>#8A94A6</code></div></div>
+      <div class="swatch"><div class="color" style="background:#F4F6FA;border-bottom:1px solid #E3E8EF"></div><div class="info"><b>页面背景</b><code>#F4F6FA</code></div></div>
+      <div class="swatch"><div class="color" style="background:#FFFFFF;border-bottom:1px solid #E3E8EF"></div><div class="info"><b>卡片/表面</b><code>#FFFFFF</code></div></div>
+      <div class="swatch"><div class="color" style="background:#E3E8EF"></div><div class="info"><b>边框/分割线</b><code>#E3E8EF</code></div></div>
+    </div>
+    <h3 style="font-size:15px;color:var(--text-2);margin:26px 0 14px">功能色</h3>
+    <div class="grid g3">
+      <div class="swatch"><div class="color" style="background:#1E9E6A"></div><div class="info"><b>成功</b><code>#1E9E6A</code></div></div>
+      <div class="swatch"><div class="color" style="background:#D98A1F"></div><div class="info"><b>警告</b><code>#D98A1F</code></div></div>
+      <div class="swatch"><div class="color" style="background:#D64545"></div><div class="info"><b>危险/错误</b><code>#D64545</code></div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="num">03</span>字体与排版</h2>
+    <table>
+      <thead><tr><th>层级</th><th>字号</th><th>字重</th><th>应用场景</th></tr></thead>
+      <tbody>
+        <tr><td>页面大标题</td><td>24px</td><td>600</td><td>工作台页头标题</td></tr>
+        <tr><td>区块标题</td><td>18px</td><td>600</td><td>卡片 / 模块标题</td></tr>
+        <tr><td>正文</td><td>14px</td><td>400</td><td>列表、表格、描述</td></tr>
+        <tr><td>辅助文字</td><td>13px</td><td>400</td><td>备注、时间戳</td></tr>
+        <tr><td>小字/标签</td><td>12px</td><td>400</td><td>标签、角标、说明</td></tr>
+      </tbody>
+    </table>
+    <p style="font-size:13px;color:var(--text-3);margin-top:14px">字体栈：PingFang SC / Microsoft YaHei / Source Han Sans SC，行高 1.6。</p>
+  </section>
+
+  <section>
+    <h2><span class="num">04</span>间距 · 圆角 · 阴影</h2>
+    <table>
+      <thead><tr><th>类型</th><th>取值</th><th>说明</th></tr></thead>
+      <tbody>
+        <tr><td>间距梯度</td><td>4 / 8 / 12 / 16 / 20 / 24 / 32</td><td>4px 基数递增</td></tr>
+        <tr><td>圆角</td><td>4 / 6 / 10px</td><td>小控件 4、按钮 6、卡片 10</td></tr>
+        <tr><td>阴影</td><td>sm / md / lg 三档</td><td>悬浮 4px14、弹层 10px32</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2><span class="num">05</span>核心组件</h2>
+
+    <h3 style="font-size:15px;color:var(--text-2);margin-bottom:14px">按钮</h3>
+    <div class="demo">
+      <button class="btn btn-primary">主要按钮</button>
+      <button class="btn btn-outline">次要按钮</button>
+      <button class="btn btn-ghost">幽灵按钮</button>
+      <button class="btn btn-danger">危险操作</button>
+      <button class="btn btn-primary btn-sm">小尺寸</button>
+    </div>
+
+    <h3 style="font-size:15px;color:var(--text-2);margin-bottom:14px">输入框</h3>
+    <div class="demo">
+      <input class="input" type="text" placeholder="请输入搜索内容">
+      <input class="input" type="password" placeholder="请输入密码">
+    </div>
+
+    <h3 style="font-size:15px;color:var(--text-2);margin-bottom:14px">标签</h3>
+    <div class="demo">
+      <span class="tag tag-blue">已启用</span>
+      <span class="tag tag-green">运行中</span>
+      <span class="tag tag-orange">待审核</span>
+      <span class="tag tag-red">异常</span>
+      <span class="tag tag-gray">草稿</span>
+    </div>
+
+    <h3 style="font-size:15px;color:var(--text-2);margin-bottom:14px">卡片</h3>
+    <div class="grid g2">
+      <div class="card"><h4>统计卡片示例</h4><p>用于工作台数据概览，含标题、数值与趋势说明。</p></div>
+      <div class="card"><h4>列表卡片示例</h4><p>用于知识库、任务等列表容器，内嵌表格或列表项。</p></div>
+    </div>
+  </section>
+
+  <div class="note">说明：此规范为 v1.0 基线，随项目迭代持续更新。所有页面配色、字体、间距均引用上方 CSS 变量，改动变量即可全局同步。工程师可直接复用本文件头部 :root 变量与组件样式。</div>
+</main>
+</body>
+</html>
