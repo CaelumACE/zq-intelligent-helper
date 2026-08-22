@@ -12,3 +12,4 @@ venv/
 
 data/conversations.json
 data/embeddings_cache.json
+scripts/model_compare_result.json
