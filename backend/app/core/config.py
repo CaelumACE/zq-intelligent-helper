@@ -29,7 +29,7 @@ class Settings:
     EMBEDDING_DIMENSION = int(os.getenv('EMBEDDING_DIMENSION', '1024'))
     
     # 数据目录
-    DATA_DIR = Path(__file__).parent.parent.parent / 'data'
+    DATA_DIR = Path(__file__).resolve().parent.parent.parent.parent / 'data'
     
     @property
     def llm_config(self):
