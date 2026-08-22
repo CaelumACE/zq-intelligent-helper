@@ -11,3 +11,4 @@ venv/
 *.log
 
 data/conversations.json
+data/embeddings_cache.json

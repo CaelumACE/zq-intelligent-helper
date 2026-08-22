@@ -25,8 +25,9 @@ class Settings:
     DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///./data/gov_assistant.db')
     
     # Embedding
-    EMBEDDING_PROVIDER = os.getenv('EMBEDDING_PROVIDER', 'builtin')
-    EMBEDDING_DIMENSION = int(os.getenv('EMBEDDING_DIMENSION', '1024'))
+    EMBEDDING_PROVIDER = os.getenv('EMBEDDING_PROVIDER', 'minimax')
+    EMBEDDING_MODEL = os.getenv('EMBEDDING_MODEL', 'embo-01')
+    EMBEDDING_DIMENSION = int(os.getenv('EMBEDDING_DIMENSION', '1536'))
     
     # 数据目录
     DATA_DIR = Path(__file__).resolve().parent.parent.parent.parent / 'data'

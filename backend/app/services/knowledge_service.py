@@ -4,6 +4,7 @@ import re
 from typing import List, Dict, Any
 from app.core.config import settings
 from app.core.logger import logger
+from app.services.embedding_service import embedding_service
 
 
 # 领域同义词与扩展词表，用于在轻量关键词检索中提升语义召回
@@ -50,10 +51,13 @@ CATEGORY_KEYWORDS = {
 
 class KnowledgeService:
     """知识库检索服务"""
+    SEMANTIC_WEIGHT = 12.0
 
     def __init__(self):
         self.documents = []
         self.chunks = []
+        self._corpus_embeddings = []
+        self._corpus_ready = False
         self._load_data()
 
     def _load_data(self):
@@ -68,18 +72,25 @@ class KnowledgeService:
             with open(settings.DATA_DIR / '公文模板.json', 'r', encoding='utf-8') as f:
                 templates = json.load(f)
 
+            knowledge = []
+            knowledge_path = settings.DATA_DIR / '政务知识库.json'
+            if knowledge_path.exists():
+                with open(knowledge_path, 'r', encoding='utf-8') as f:
+                    knowledge = json.load(f)
+
             self.documents = {
                 'policies': policies,
                 'services': services,
                 'templates': templates,
+                'knowledge': knowledge,
             }
 
             self._build_chunks()
-            logger.info(f"知识库加载完成: {len(policies)} 政策 + {len(services)} 事项 + {len(templates)} 模板")
+            logger.info(f"知识库加载完成: {len(policies)} 政策 + {len(services)} 事项 + {len(templates)} 模板 + {len(knowledge)} 公文知识")
 
         except Exception as e:
             logger.error(f"知识库加载失败: {e}")
-            self.documents = {'policies': [], 'services': [], 'templates': []}
+            self.documents = {'policies': [], 'services': [], 'templates': [], 'knowledge': []}
             self.chunks = []
 
     def _build_chunks(self):
@@ -126,6 +137,18 @@ class KnowledgeService:
             }
             self.chunks.append(chunk)
 
+        for item in self.documents.get('knowledge', []):
+            chunk = {
+                'id': item['id'],
+                'type': 'knowledge',
+                'title': item['title'],
+                'category': item.get('category', '公文知识'),
+                'summary': item.get('summary', ''),
+                'source': item.get('source', '公文知识库'),
+                'keywords': item.get('keywords', item.get('summary', '')),
+            }
+            self.chunks.append(chunk)
+
     def _extract_policy_keywords(self, doc: dict) -> str:
         parts = [
             doc.get('title', ''),
@@ -150,8 +173,8 @@ class KnowledgeService:
 
     def _extract_template_keywords(self, tpl: dict) -> str:
         parts = [
-            tpl.get('type_name', ''),
             tpl.get('doc_type', ''),
+            tpl.get('type_name', ''),
             tpl.get('standard_structure', ''),
             ' '.join(tpl.get('writing_tips', [])),
             ' '.join(str(x.get('element', '')) for x in tpl.get('format_elements', [])),
@@ -165,15 +188,21 @@ class KnowledgeService:
         expanded_query = self._expand_query(query_lower)
         category = self._detect_category(query_lower)
 
-        writing_intent = any(w in query_lower for w in ('写', '起草', '拟', '撰写', '生成', '帮我写'))
+        writing_intent = self.is_writing_intent(query_lower)
+        query_vec = self._embed_query(query_lower)
 
-        for chunk in self.chunks:
+        for i, chunk in enumerate(self.chunks):
             text = f"{chunk['title']} {chunk['summary']} {chunk.get('keywords', '')}"
             score = self._keyword_score(expanded_query, text.lower())
+            if query_vec is not None and self._corpus_ready and i < len(self._corpus_embeddings):
+                score += embedding_service.cosine(query_vec, self._corpus_embeddings[i]) * self.SEMANTIC_WEIGHT
             if category and category in chunk.get('category', ''):
                 score += 2.0
             if writing_intent and chunk.get('type') == 'template':
                 score += self._template_type_bonus(query_lower, chunk)
+            # 非写作意图下，公文模板词频高容易抢占政策问答，予以降权
+            if not writing_intent and chunk.get('type') == 'template':
+                score -= 4.0
             score += self._title_bonus(query_lower, chunk['title'])
             if score > 0:
                 results.append({
@@ -187,7 +216,39 @@ class KnowledgeService:
                 })
 
         results.sort(key=lambda x: x['score'], reverse=True)
-        return results[:top_k]
+        top = results[:top_k]
+        if not top:
+            return []
+        top_score = max(r['score'] for r in top)
+        return [r for r in top if r['score'] >= max(1.0, top_score * 0.35)]
+
+    def _embed_query(self, query: str) -> List[float] | None:
+        """查询向量化；失败时返回 None 并按关键词检索降级"""
+        try:
+            self._ensure_corpus_embeddings()
+            return embedding_service.sync_embed_batch([query], 'query')[0]
+        except Exception as e:
+            logger.warning(f"语义检索不可用，降级为关键词检索: {e}")
+            return None
+
+    def _ensure_corpus_embeddings(self):
+        """惰性构建语料向量索引（结果缓存到本地）"""
+        if self._corpus_ready:
+            return
+        if not self.chunks:
+            self._corpus_ready = True
+            return
+        try:
+            texts = [f"{c['title']} {c['summary']} {c.get('keywords', '')}" for c in self.chunks]
+            vectors = embedding_service.sync_embed_batch(texts, 'db')
+            if vectors and all(isinstance(v, list) and len(v) > 0 for v in vectors):
+                self._corpus_embeddings = vectors
+                self._corpus_ready = True
+                logger.info(f"语义向量索引构建完成: {len(vectors)} 条")
+            else:
+                logger.warning("语义向量索引为空，使用关键词检索")
+        except Exception as e:
+            logger.warning(f"语义向量索引构建失败，使用关键词检索: {e}")
 
     def _expand_query(self, query: str) -> str:
         """基于同义词扩展查询词，提升召回"""
@@ -210,6 +271,29 @@ class KnowledgeService:
                 best = category
                 best_count = count
         return best if best_count >= 2 else ''
+
+    # 写作动词与常见写作句式
+    WRITING_VERBS = {'写', '起草', '拟', '撰写', '生成', '写一份', '写一个', '帮我写', '起个稿'}
+    # 知识问答标志词
+    QUESTION_MARKERS = {'种类', '类型', '分类', '有几种', '有哪些', '什么叫', '是什么', '定义', '含义', '区别', '依据', '规定', '流程'}
+
+    def is_writing_intent(self, query: str) -> bool:
+        """判断是否公文写作意图"""
+        return any(w in query for w in self.WRITING_VERBS)
+
+    def is_question_intent(self, query: str) -> bool:
+        """判断是否知识问答意图（避免误入写作模板）"""
+        return any(w in query for w in self.QUESTION_MARKERS)
+
+    def classify_intent(self, query: str) -> str:
+        """三分类：writing 写作 / service 办事 / qa 问答"""
+        if self.is_writing_intent(query):
+            return 'writing'
+        if any(w in query for w in ('办理', '申领', '申请', '需要什么材料', '材料', '怎么办', '去哪里')):
+            return 'service'
+        if self.is_question_intent(query):
+            return 'qa'
+        return 'qa'
 
     def _title_bonus(self, query: str, title: str) -> float:
         clean = self._clean_query(query)

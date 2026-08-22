@@ -1,6 +1,20 @@
 version: '3.8'
 
 services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: gov
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-gov123456}
+      POSTGRES_DB: gov_assistant
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gov -d gov_assistant"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   backend:
     build:
       context: .
@@ -15,11 +29,15 @@ services:
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
       - DEEPSEEK_MODEL=${DEEPSEEK_MODEL:-deepseek-chat}
       - DEEPSEEK_BASE_URL=${DEEPSEEK_BASE_URL:-https://api.deepseek.com/v1}
-      - DATABASE_URL=${DATABASE_URL:-sqlite:///./data/gov_assistant.db}
-      - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-builtin}
-      - EMBEDDING_DIMENSION=${EMBEDDING_DIMENSION:-1024}
+      - DATABASE_URL=${DATABASE_URL:-postgresql+psycopg2://gov:${POSTGRES_PASSWORD:-gov123456}@postgres:5432/gov_assistant}
+      - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-minimax}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-embo-01}
+      - EMBEDDING_DIMENSION=${EMBEDDING_DIMENSION:-1536}
     volumes:
       - ./data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
 
   frontend:
@@ -31,3 +49,6 @@ services:
     depends_on:
       - backend
     restart: unless-stopped
+
+volumes:
+  pgdata:
