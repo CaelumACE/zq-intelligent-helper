@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState } from 'react'
 import Sidebar from './components/Sidebar'
 import Header from './components/Header'
 import ChatInput from './components/ChatInput'
@@ -76,6 +76,7 @@ function App() {
       <Sidebar 
         currentView={currentView}
         onNewChat={handleNewChat}
+        onSelectConversation={(id: string) => console.log(id)}
       />
       
       <div className="flex-1 flex flex-col overflow-hidden">

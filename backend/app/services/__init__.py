@@ -1,6 +1,5 @@
 """服务层"""
 from .llm_service import LLMService
-from .knowledge_service import KnowledgeService
-from .chat_service import ChatService
+from .knowledge_service import knowledge_service
 
-__all__ = ['LLMService', 'KnowledgeService', 'ChatService']
+__all__ = ['LLMService', 'knowledge_service']
