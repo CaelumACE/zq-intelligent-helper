@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>政企智能助手 · PRD v1.1 架构与质量补充说明</title>
+<style>
+:root{
+  --primary:#1a3a6b;--primary-light:#2c5aa0;--accent:#c8a45a;--bg:#f5f6fa;
+  --surface:#fff;--text:#1f2329;--text-2:#5c6470;--border:#e3e6ed;
+  --danger:#d94040;--success:#2a8c5a;--warning:#d48806;--info:#1677ff;
+  --radius:10px;--shadow:0 1px 4px rgba(26,58,107,.06);
+  --font:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  --mono:"SF Mono",Consolas,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font);background:var(--bg);color:var(--text);line-height:1.7;font-size:15px}
+.doc-header{background:linear-gradient(135deg,#1a3a6b,#2c5aa0);color:#fff;padding:40px 0 30px}
+.header-inner{max-width:1000px;margin:0 auto;padding:0 32px}
+.badge{display:inline-block;background:rgba(200,164,90,.2);color:var(--accent);font-size:12px;font-weight:600;padding:4px 14px;border-radius:20px;margin-bottom:14px}
+.doc-header h1{font-size:28px;margin-bottom:6px}
+.subtitle{opacity:.85;font-size:15px}
+.container{max-width:1000px;margin:0 auto;padding:28px}
+.section{background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);padding:28px;margin-bottom:22px;border:1px solid var(--border)}
+.section h2{font-size:20px;color:var(--primary);margin-bottom:16px;padding-bottom:10px;border-bottom:2px solid var(--primary);display:flex;align-items:center;gap:10px}
+.section h2 .num{background:var(--primary);color:#fff;width:28px;height:28px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:13px}
+.section h3{font-size:16px;margin:20px 0 10px;display:flex;align-items:center;gap:8px}
+.section h3::before{content:"";width:4px;height:17px;background:var(--accent);border-radius:2px}
+p{margin-bottom:10px}
+ul,ol{margin:10px 0 10px 22px}
+li{margin-bottom:5px}
+table{width:100%;border-collapse:collapse;margin:14px 0;font-size:13.5px}
+th{background:var(--primary);color:#fff;padding:10px 12px;text-align:left;font-weight:600}
+td{padding:9px 12px;border-bottom:1px solid var(--border);vertical-align:top}
+tr:nth-child(even) td{background:#fafbfd}
+code{background:#eef1f8;padding:2px 6px;border-radius:3px;font-family:var(--mono);font-size:12.5px;color:var(--primary)}
+pre{background:#1f2329;color:#e3e6ed;padding:16px;border-radius:8px;overflow-x:auto;font-family:var(--mono);font-size:13px;line-height:1.6;margin:12px 0}
+.tag{display:inline-block;font-size:11px;font-weight:600;padding:2px 9px;border-radius:4px}
+.tag-p0{background:#fde8e8;color:var(--danger)}
+.tag-arch{background:#e3f2fd;color:var(--info)}
+.callout{padding:14px 18px;border-radius:8px;margin:14px 0;font-size:14px;display:flex;gap:10px}
+.callout-warn{background:#fff4e6;border-left:4px solid var(--warning)}
+.callout-info{background:#e3f2fd;border-left:4px solid var(--info)}
+.callout-success{background:#e8f5e9;border-left:4px solid var(--success)}
+.card{background:#fafbfd;border:1px solid var(--border);border-radius:8px;padding:16px;margin:10px 0}
+.card-title{font-weight:600;color:var(--primary);margin-bottom:6px}
+.phase{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:14px 0}
+.phase-box{border-radius:8px;padding:16px;border:1px solid var(--border)}
+.phase-now{background:#e8f5e9;border-color:#a5d6a7}
+.phase-future{background:#f5f5f5;border-color:#ddd}
+.phase-box h4{margin-bottom:8px;font-size:15px}
+@media(max-width:768px){.phase{grid-template-columns:1fr}.container{padding:16px}.section{padding:20px}}
+</style>
+</head>
+<body>
+
+<header class="doc-header">
+  <div class="header-inner">
+    <span class="badge">PRD SUPPLEMENT v1.1</span>
+    <h1>架构与质量补充说明</h1>
+    <p class="subtitle">对应浩哥5点要求 · 验收标准落地 · 私有化预留 · 2026-08-22</p>
+  </div>
+</header>
+
+<main class="container">
+
+  <section class="section">
+    <h2><span class="num">0</span> 核心决策（已与浩哥对齐）</h2>
+    <div class="phase">
+      <div class="phase-box phase-now">
+        <h4>✅ 当前阶段（3天Demo）</h4>
+        <ul>
+          <li>云端部署，<strong>可出网</strong>调用云端LLM API</li>
+          <li>Web响应式，公网URL可访问</li>
+          <li>聚焦功能跑通 + 红线(P0)指标</li>
+        </ul>
+      </div>
+      <div class="phase-box phase-future">
+        <h4>🔮 未来阶段（私有化）</h4>
+        <ul>
+          <li>Dify + Ollama本地模型，<strong>数据不出网</strong></li>
+          <li>同一套代码/部署包切换，<strong>不做大改</strong></li>
+          <li>补齐全部安全合规红线</li>
+        </ul>
+      </div>
+    </div>
+    <div class="callout callout-info">
+      <span>ℹ️</span>
+      <div><strong>架构铁律：</strong>所有与"模型、向量库、数据库、外部服务"相关的调用，必须通过抽象接口/配置层封装。切换私有化时，只改配置和适配器，不动业务逻辑代码。</div>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2><span class="num">1</span> 五点技术要求落地</h2>
+
+    <h3>要求1：架构稳定、可扩展性强</h3>
+    <div class="card">
+      <div class="card-title">分层架构 + 接口抽象</div>
+      <ul>
+        <li><strong>表现层</strong>：Web前端（React/Vue），只通过API网关与后端通信</li>
+        <li><strong>业务层</strong>：FastAPI，负责会话、问答编排、公文生成、流程导引</li>
+        <li><strong>能力层（核心抽象）</strong>：
+          <ul>
+            <li><code>LLMProvider</code> 接口：<code>chat()</code> / <code>embed()</code>，实现 <code>CloudLLM</code> 和 <code>OllamaLLM</code> 两个类</li>
+            <li><code>VectorStore</code> 接口：<code>add()</code> / <code>search()</code>，实现 <code>ChromaStore</code>，预留 <code>MilvusStore</code></li>
+            <li><code>DocumentParser</code> 接口：预留PDF/Word解析扩展</li>
+          </ul>
+        </li>
+        <li><strong>数据层</strong>：PostgreSQL + 向量库，通过Repository模式访问</li>
+      </ul>
+      <pre># 切换私有化只需改环境变量
+LLM_PROVIDER=cloud        # cloud → ollama
+EMBED_PROVIDER=cloud      # cloud → bge_local
+VECTOR_STORE=chroma       # chroma → milvus
+DB_URL=postgresql://...   # 同一套schema</pre>
+    </div>
+
+    <h3>要求2：自动化部署与优化</h3>
+    <div class="card">
+      <div class="card-title">Docker Compose 一键启动</div>
+      <ul>
+        <li>四个服务：<code>frontend</code> + <code>backend</code> + <code>postgres</code> + <code>chroma</code></li>
+        <li>提供 <code>init.sql</code> 自动建表，<code>seed.py</code> 自动导入政策/办事/模板数据</li>
+        <li>环境变量统一放 <code>.env</code>，提供 <code>.env.example</code></li>
+        <li>云端：服务器 <code>docker compose up -d</code> 即可；私有化：同样命令搬到内网</li>
+      </ul>
+    </div>
+
+    <h3>要求3：数据库稳定可扩展</h3>
+    <div class="card">
+      <div class="card-title">PostgreSQL + 规范表结构</div>
+      <ul>
+        <li>用 <strong>PostgreSQL</strong>（非SQLite），生产可用、易扩展、私有化直接复用</li>
+        <li>核心表：<code>conversations</code>、<code>messages</code>、<code>documents</code>、<code>document_chunks</code>、<code>service_guides</code>、<code>doc_templates</code>、<code>audit_logs</code></li>
+        <li>所有表带 <code>created_at</code> / <code>updated_at</code>；消息表预留 <code>tokens</code>、<code>latency_ms</code>、<code>source_ids</code> 字段用于评测</li>
+        <li>索引：会话按 <code>user_id</code>+<code>updated_at</code>，分块按 <code>doc_id</code></li>
+      </ul>
+    </div>
+
+    <h3>要求4：RAG 高质量设计</h3>
+    <div class="card">
+      <div class="card-title">检索链路（验收指标导向）</div>
+      <ol>
+        <li><strong>语义切片</strong>：政策文档按"条款/段落"切，不硬切固定长度；chunk 300-500字，overlap 50字</li>
+        <li><strong>Embedding</strong>：中文向量模型，每个chunk存原文+元数据（doc_id/title/条款号）</li>
+        <li><strong>检索 Top-K=5</strong>：向量召回</li>
+        <li><strong>Rerank（必做）</strong>：用LLM或规则对Top-5重排，把最相关的前置（直接提升MRR和引用准确率）</li>
+        <li><strong>Prompt约束</strong>：
+          <ul>
+            <li>"只能基于以下材料回答，不允许编造"</li>
+            <li>"每个事实后用[n]标注引用来源"</li>
+            <li>"材料不足时回答'暂未找到相关政策信息，建议咨询相关科室'"</li>
+          </ul>
+        </li>
+        <li><strong>引用溯源</strong>：返回 <code>sources[]</code>，含文件名、文号、条款定位，前端渲染</li>
+      </ol>
+    </div>
+
+    <h3>要求5：对标验收指标，持续整改</h3>
+    <p>建立"测试→评测→整改"闭环。Day3交付前，我（小赵）按UAT测试集逐项验收，不达标项进整改清单。</p>
+  </section>
+
+  <section class="section">
+    <h2><span class="num">2</span> 3天MVP验收指标承诺表</h2>
+    <p>务实设线，能做到的承诺，做不到的标阶段：</p>
+    <table>
+      <tr><th>维度</th><th>指标</th><th>验收红线</th><th>MVP目标</th><th>状态</th></tr>
+      <tr><td rowspan="3">检索</td><td>Recall@5</td><td>≥80%</td><td>≥80%</td><td><span class="tag tag-p0">冲刺</span></td></tr>
+      <tr><td>Hit Rate@5</td><td>≥85%</td><td>≥85%</td><td><span class="tag tag-p0">冲刺</span></td></tr>
+      <tr><td>检索耗时P95</td><td>≤1.5s</td><td>≤1.5s</td><td><span class="tag tag-arch">可达</span></td></tr>
+      <tr><td rowspan="4">生成</td><td>Faithfulness忠实度</td><td>≥85%</td><td>≥85%</td><td><span class="tag tag-p0">冲刺</span></td></tr>
+      <tr><td>引用准确率</td><td>≥92%</td><td>≥90%</td><td><span class="tag tag-p0">冲刺</span></td></tr>
+      <tr><td>幻觉率</td><td>≤8%</td><td>≤8%</td><td><span class="tag tag-p0">冲刺</span></td></tr>
+      <tr><td>拒答准确率</td><td>≥85%</td><td>≥80%</td><td><span class="tag tag-p0">冲刺</span></td></tr>
+      <tr><td rowspan="2">性能</td><td>TTFT首token</td><td>≤5s</td><td>≤5s</td><td><span class="tag tag-arch">可达</span></td></tr>
+      <tr><td>完整响应</td><td>≤15s</td><td>≤10s</td><td><span class="tag tag-arch">可达</span></td></tr>
+      <tr><td rowspan="3">安全合规</td><td>审计日志</td><td>100%</td><td>100%落库</td><td><span class="tag tag-arch">可达</span></td></tr>
+      <tr><td>敏感词拦截</td><td>100%</td><td>关键词+提示</td><td><span class="tag tag-arch">可达</span></td></tr>
+      <tr><td><strong>数据不出网</strong></td><td>100%</td><td>—</td><td><span style="color:#999">私有化阶段</span></td></tr>
+    </table>
+    <div class="callout callout-warn">
+      <span>⚠️</span>
+      <div>"数据不出网"红线在云端Demo阶段<strong>明确标注为V2私有化交付项</strong>，不作为本阶段验收门槛。其余红线力争100%达标。</div>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2><span class="num">3</span> 安全合规的Demo期处理</h2>
+    <table>
+      <tr><th>红线项</th><th>Demo阶段</th><th>私有化阶段</th></tr>
+      <tr><td>数据不出网</td><td>使用云端API，明确告知出网</td><td>Ollama本地+内网向量库</td></tr>
+      <tr><td>敏感词拦截</td><td>输入关键词过滤+输出检测</td><td>同左+本地词库</td></tr>
+      <tr><td>审计日志</td><td>会话/问答全落库（留存30天）</td><td>留存≥6个月</td></tr>
+      <tr><td>权限隔离</td><td>预留role字段，Demo单用户</td><td>角色/部门最小授权</td></tr>
+      <tr><td>模型供应链可信</td><td>记录API供应商版本</td><td>本地模型哈希校验+备案</td></tr>
+    </table>
+  </section>
+
+  <section class="section">
+    <h2><span class="num">4</span> 给小孙的架构交付清单（Day1-Day2）</h2>
+    <ol>
+      <li>✅ 项目脚手架：前后端分离，<code>docker compose up</code> 能跑</li>
+      <li>✅ <code>LLMProvider</code> 抽象接口 + 云端API实现（Ollama实现留空壳/TODO）</li>
+      <li>✅ PostgreSQL建表 + 自动初始化 + 数据导入脚本</li>
+      <li>✅ RAG链路：切片→Embedding→检索→Rerank→生成→引用返回</li>
+      <li>✅ 中间件：请求日志记录（问题/检索文档ID/耗时/token）到 <code>audit_logs</code></li>
+      <li>✅ 统一配置 <code>.env</code>，所有厂商相关参数不硬编码</li>
+    </ol>
+    <div class="callout callout-success">
+      <span>✅</span>
+      <div>验收标准原文已归档到 <code>验收/验收标准与量化指标_v1.0.md</code>。UAT测试用例集另见 <code>验收/UAT测试用例_v1.0.md</code>，Day3我按此逐项验收。</div>
+    </div>
+  </section>
+
+</main>
+</body>
+</html>
