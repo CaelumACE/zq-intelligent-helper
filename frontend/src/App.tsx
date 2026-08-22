@@ -315,7 +315,7 @@ function App() {
           )}
         </div>
 
-        <ChatInput onSend={handleSendMessage} disabled={isLoading} model={model} messages={messages} />
+        <ChatInput onSend={handleSendMessage} onStop={handleStop} disabled={isLoading} model={model} messages={messages} />
 
         <WritingPanel
           open={writingOpen}

@@ -3,6 +3,7 @@ import type { ModelProvider, Message } from '../types'
 
 interface ChatInputProps {
   onSend: (content: string) => void
+  onStop?: () => void
   disabled?: boolean
   model: ModelProvider
   messages: Message[]
@@ -31,7 +32,7 @@ function pickChips(messages: Message[]): string[] {
   return DEFAULT_CHIPS
 }
 
-export default function ChatInput({ onSend, disabled = false, model, messages }: ChatInputProps) {
+export default function ChatInput({ onSend, onStop, disabled = false, model, messages }: ChatInputProps) {
   const [value, setValue] = useState('')
   const chips = useMemo(() => pickChips(messages), [messages])
 
@@ -40,6 +41,14 @@ export default function ChatInput({ onSend, disabled = false, model, messages }:
     if (!content || disabled) return
     onSend(content)
     setValue('')
+  }
+
+  const handlePrimary = () => {
+    if (disabled) {
+      onStop?.()
+      return
+    }
+    handleSend()
   }
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -53,6 +62,10 @@ export default function ChatInput({ onSend, disabled = false, model, messages }:
   if (messages.length === 0) {
     return (
       <div className="chat-input">
+        <div className={`stream-banner ${disabled ? 'show' : ''}`}>
+          <span className="dot" />
+          AI 正在回复中，请等待完成后再发送
+        </div>
         <div className="input-row">
           <textarea
             value={value}
@@ -61,8 +74,13 @@ export default function ChatInput({ onSend, disabled = false, model, messages }:
             placeholder="输入您的问题，Enter 发送，Shift+Enter 换行…"
             rows={1}
             className="chat-textarea"
+            disabled={disabled}
           />
-          <button onClick={() => handleSend()} disabled={disabled || !value.trim()} className={`send-btn ${disabled ? 'streaming' : ''}`}>
+          <button
+            onClick={handlePrimary}
+            disabled={!disabled && !value.trim()}
+            className={`send-btn ${disabled ? 'streaming' : ''}`}
+          >
             {disabled ? '停止' : '发送'}
           </button>
         </div>
@@ -75,6 +93,10 @@ export default function ChatInput({ onSend, disabled = false, model, messages }:
 
   return (
     <div className="chat-input">
+      <div className={`stream-banner ${disabled ? 'show' : ''}`}>
+        <span className="dot" />
+        AI 正在回复中，请等待完成后再发送
+      </div>
       {chips.length > 0 && (
         <div className="chip-row">
           {chips.map((chip) => (
@@ -92,10 +114,11 @@ export default function ChatInput({ onSend, disabled = false, model, messages }:
           placeholder="输入您的问题，Enter 发送，Shift+Enter 换行…"
           rows={1}
           className="chat-textarea"
+          disabled={disabled}
         />
         <button
-          onClick={() => handleSend()}
-          disabled={disabled || !value.trim()}
+          onClick={handlePrimary}
+          disabled={!disabled && !value.trim()}
           className={`send-btn ${disabled ? 'streaming' : ''}`}
         >
           {disabled ? '停止' : '发送'}
