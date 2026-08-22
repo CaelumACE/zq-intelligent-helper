@@ -5,6 +5,7 @@ from typing import List, Optional
 from app.core.config import settings
 from app.core.logger import logger
 from app.services.knowledge_service import knowledge_service
+from app.services.vector_store import vector_store
 
 router = APIRouter()
 
@@ -86,6 +87,23 @@ async def get_stats():
         )
     except Exception as e:
         logger.error(f"Get stats error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/rag/status")
+async def rag_status():
+    """RAG 存储与向量池状态探测。"""
+    try:
+        vector_status = vector_store.status()
+        embedding_ready = knowledge_service._corpus_ready
+        return {
+            "vector_store": vector_status,
+            "memory_embedding_ready": embedding_ready,
+            "embedding_dimension": settings.EMBEDDING_DIMENSION,
+            "chunks_total": len(knowledge_service.chunks),
+        }
+    except Exception as e:
+        logger.error(f"RAG status error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

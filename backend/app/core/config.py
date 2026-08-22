@@ -30,6 +30,12 @@ class Settings:
     EMBEDDING_MODEL = os.getenv('EMBEDDING_MODEL', 'embo-01')
     EMBEDDING_DIMENSION = int(os.getenv('EMBEDDING_DIMENSION', '1536'))
     
+    # Rerank
+    RERANK_PROVIDER = os.getenv('RERANK_PROVIDER', 'offline')
+    RERANK_MODEL = os.getenv('RERANK_MODEL', 'bge-reranker-base')
+    RERANK_BASE_URL = os.getenv('RERANK_BASE_URL', '')
+    RERANK_API_KEY = os.getenv('RERANK_API_KEY', '')
+
     # 数据目录
     DATA_DIR = Path(__file__).resolve().parent.parent.parent.parent / 'data'
     

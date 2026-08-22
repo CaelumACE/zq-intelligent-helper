@@ -5,6 +5,8 @@ from typing import List, Dict, Any
 from app.core.config import settings
 from app.core.logger import logger
 from app.services.embedding_service import embedding_service
+from app.services.vector_store import vector_store
+from app.services.rerank_service import rerank_service
 
 
 # 领域同义词与扩展词表，用于在轻量关键词检索中提升语义召回
@@ -58,6 +60,7 @@ class KnowledgeService:
         self.chunks = []
         self._corpus_embeddings = []
         self._corpus_ready = False
+        self._pg_synced = False
         self._load_data()
 
     def _load_data(self):
@@ -190,12 +193,12 @@ class KnowledgeService:
 
         writing_intent = self.is_writing_intent(query_lower)
         query_vec = self._embed_query(query_lower)
+        pg_scores = self._vector_scores(query_vec, top_k, query_lower) if query_vec is not None else {}
 
         for i, chunk in enumerate(self.chunks):
             text = f"{chunk['title']} {chunk['summary']} {chunk.get('keywords', '')}"
-            score = self._keyword_score(expanded_query, text.lower())
-            if query_vec is not None and self._corpus_ready and i < len(self._corpus_embeddings):
-                score += embedding_service.cosine(query_vec, self._corpus_embeddings[i]) * self.SEMANTIC_WEIGHT
+            score = self._keyword_score(expanded_query, text)
+            score += self._semantic_score(query_vec, i, chunk, pg_scores)
             if category and category in chunk.get('category', ''):
                 score += 2.0
             if writing_intent and chunk.get('type') == 'template':
@@ -216,7 +219,8 @@ class KnowledgeService:
                 })
 
         results.sort(key=lambda x: x['score'], reverse=True)
-        top = results[:top_k]
+        results = rerank_service.rerank_sync(query, results)[:top_k]
+        top = results
         if not top:
             return []
         top_score = max(r['score'] for r in top)
@@ -245,10 +249,41 @@ class KnowledgeService:
                 self._corpus_embeddings = vectors
                 self._corpus_ready = True
                 logger.info(f"语义向量索引构建完成: {len(vectors)} 条")
+                self._try_sync_pgvectors()
             else:
                 logger.warning("语义向量索引为空，使用关键词检索")
         except Exception as e:
             logger.warning(f"语义向量索引构建失败，使用关键词检索: {e}")
+
+    def _try_sync_pgvectors(self):
+        """把内存向量索引同步到 PostgreSQL + pgvector（如启用）。"""
+        if self._pg_synced:
+            return
+        if vector_store.mode != 'postgres' or not self._corpus_ready or not self._corpus_embeddings:
+            return
+        if vector_store.ensure_ready():
+            if vector_store.rebuild_from_corpus(self.chunks, self._corpus_embeddings):
+                self._pg_synced = True
+
+    def _vector_scores(self, query_vec, top_k: int, query: str) -> dict:
+        """获取 pgvector 的语义召回候选及分数映射。"""
+        if vector_store.mode != 'postgres':
+            return {}
+        try:
+            hits = vector_store.search_sync(query_vec, top_k=max(10, top_k * 4))
+            return {h.get('id'): float(h.get('semantic_score') or 0.0) for h in (hits or []) if h.get('id')}
+        except Exception as exc:
+            logger.warning(f"pgvector 检索失败，使用内存向量: {exc}")
+            return {}
+
+    def _semantic_score(self, query_vec, index: int, chunk: dict, pg_scores: dict) -> float:
+        """优先用 pgvector 分数，回退内存余弦。"""
+        chunk_id = chunk.get('id')
+        if chunk_id and chunk_id in pg_scores:
+            return pg_scores[chunk_id] * self.SEMANTIC_WEIGHT
+        if query_vec is not None and self._corpus_ready and index < len(self._corpus_embeddings):
+            return embedding_service.cosine(query_vec, self._corpus_embeddings[index]) * self.SEMANTIC_WEIGHT
+        return 0.0
 
     def _expand_query(self, query: str) -> str:
         """基于同义词扩展查询词，提升召回"""

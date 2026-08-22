@@ -3,6 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.logger import logger
+from app.services.vector_store import vector_store
 from app.api import chat, knowledge
 
 app = FastAPI(
@@ -30,7 +31,12 @@ async def root():
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "llm_provider": settings.LLM_PROVIDER}
+    status = {
+        "status": "ok",
+        "llm_provider": settings.LLM_PROVIDER,
+        "rag_engine": "pgvector" if vector_store.mode == "postgres" else "memory",
+    }
+    return status
 
 if __name__ == "__main__":
     import uvicorn

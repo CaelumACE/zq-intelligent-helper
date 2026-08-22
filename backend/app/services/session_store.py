@@ -1,38 +1,205 @@
-"""会话存储 - 文件持久化的轻量会话管理"""
+"""会话存储 - 支持 SQLite / PostgreSQL，自动回退 JSON 文件。
+
+存储后端选择：
+- PostgreSQL URL：优先用 `chat_sessions` 表，JSON 列保存完整会话。
+- SQLite URL：优先用本地 SQLite，避免每次全量读文件。
+- 其它 / 失败：回退 data/conversations.json，保证零基础设施演示可用。
+
+外部接口保持原样，chat API 无需改动。
+"""
 import json
 import time
 import uuid
 from pathlib import Path
+
 from app.core.config import settings
 from app.core.logger import logger
+from sqlalchemy import create_engine, text
+
+_JSON_MESSAGE_FIELDS = ("role", "content", "references", "model", "timestamp")
 
 
 class SessionStore:
     """会话存储服务"""
 
-    def __init__(self, data_dir: Path = None, filename: str = "conversations.json"):
+    def __init__(self, data_dir: Path | None = None, filename: str = "conversations.json"):
         self._data_dir = data_dir or settings.DATA_DIR
         self._data_dir.mkdir(parents=True, exist_ok=True)
         self._path = self._data_dir / filename
         self._sessions: dict = {}
+        self._engine = None
+        self._sql_ready = False
+        self._backend = self._detect_backend()
         self._load()
 
+    def _detect_backend(self) -> str:
+        url = (settings.DATABASE_URL or "").strip()
+        if url.startswith("sqlite:"):
+            return "sqlite"
+        if url.startswith("postgresql") or url.startswith("postgres+"):
+            return "postgres"
+        return "json"
+
+    def _ensure_engine(self):
+        if self._engine is not None:
+            return self._engine
+        url = settings.DATABASE_URL
+        if self._backend == "sqlite":
+            # 统一落到 data/ 目录，避免依赖进程 cwd。
+            db_path = settings.DATA_DIR / "gov_assistant.db"
+            self._engine = create_engine(
+                f"sqlite:///{db_path}",
+                connect_args={"check_same_thread": False},
+            )
+        else:
+            self._engine = create_engine(
+                url,
+                pool_pre_ping=True,
+                pool_recycle=300,
+                connect_args={"connect_timeout": 3},
+            )
+        return self._engine
+
+    def _init_sql(self) -> bool:
+        if self._backend == "json":
+            return False
+        try:
+            with self._ensure_engine().begin() as conn:
+                conn.execute(
+                    text(
+                        """
+                        CREATE TABLE IF NOT EXISTS chat_sessions (
+                            id TEXT PRIMARY KEY,
+                            title TEXT,
+                            payload JSON NOT NULL,
+                            created_at BIGINT NOT NULL,
+                            updated_at BIGINT NOT NULL
+                        )
+                        """
+                    )
+                )
+            self._sql_ready = True
+            return True
+        except Exception as exc:
+            logger.warning(f"数据库会话表初始化失败，回退 JSON: {exc}")
+            self._backend = "json"
+            self._sql_ready = False
+            return False
+
     def _load(self):
+        if self._backend != "json" and self._init_sql():
+            self._maybe_migrate_json()
+            return
         if self._path.exists():
             try:
-                with open(self._path, 'r', encoding='utf-8') as f:
-                    self._sessions = json.load(f)
+                self._sessions = json.loads(self._path.read_text(encoding="utf-8"))
                 logger.info(f"会话数据加载完成: {len(self._sessions)} 个会话")
-            except Exception as e:
-                logger.warning(f"会话数据加载失败，使用空数据: {e}")
+            except Exception as exc:
+                logger.warning(f"会话数据加载失败，使用空数据: {exc}")
                 self._sessions = {}
 
-    def _save(self):
+    def _maybe_migrate_json(self):
+        """首次从 JSON 切换到 SQLite 时，导入既有会话。"""
+        if self._backend != "sqlite" or not self._path.exists():
+            return
         try:
-            with open(self._path, 'w', encoding='utf-8') as f:
-                json.dump(self._sessions, f, ensure_ascii=False, indent=2)
-        except Exception as e:
-            logger.error(f"会话数据保存失败: {e}")
+            with self._ensure_engine().connect() as conn:
+                count = conn.execute(text("SELECT COUNT(*) FROM chat_sessions")).scalar() or 0
+            if count:
+                return
+            raw = json.loads(self._path.read_text(encoding="utf-8"))
+            for session_id, session in raw.items():
+                session.setdefault("id", session_id)
+                self._sql_upsert(session_id, session)
+            if raw:
+                logger.info(f"已迁移 JSON 会话到 SQLite: {len(raw)} 条")
+        except Exception as exc:
+            logger.warning(f"JSON 会话迁移失败，忽略: {exc}")
+
+    def _save_json(self):
+        try:
+            self._path.write_text(
+                json.dumps(self._sessions, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+        except Exception as exc:
+            logger.error(f"会话数据保存失败: {exc}")
+
+    def _sql_upsert(self, session_id: str, session: dict):
+        with self._ensure_engine().begin() as conn:
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO chat_sessions (id, title, payload, created_at, updated_at)
+                    VALUES (:id, :title, :payload, :created_at, :updated_at)
+                    ON CONFLICT (id) DO UPDATE SET
+                        title = EXCLUDED.title,
+                        payload = EXCLUDED.payload,
+                        updated_at = EXCLUDED.updated_at
+                    """
+                ),
+                {
+                    "id": session_id,
+                    "title": session.get("title") or "新对话",
+                    "payload": json.dumps(session, ensure_ascii=False),
+                    "created_at": session.get("createdAt", 0),
+                    "updated_at": session.get("updatedAt", 0),
+                },
+            )
+
+    def _sql_get(self, session_id: str) -> dict | None:
+        with self._ensure_engine().connect() as conn:
+            row = conn.execute(
+                text("SELECT payload FROM chat_sessions WHERE id = :id"),
+                {"id": session_id},
+            ).mappings().first()
+        if not row:
+            return None
+        try:
+            return json.loads(row["payload"])
+        except Exception:
+            logger.warning(f"会话 payload 解析失败: {session_id}")
+            return None
+
+    def _sql_get_history(self, session_id: str, limit: int = 10) -> list:
+        session = self._sql_get(session_id)
+        if not session:
+            return []
+        cleaned = []
+        for raw in session.get("messages", []):
+            if not isinstance(raw, dict):
+                continue
+            msg = {k: raw.get(k) for k in _JSON_MESSAGE_FIELDS if k in raw}
+            if "references" in msg and msg["references"] is not None and not isinstance(msg["references"], list):
+                msg["references"] = list(msg["references"])
+            cleaned.append(msg)
+        return cleaned[-limit:]
+
+    def _sql_list(self) -> list:
+        with self._ensure_engine().connect() as conn:
+            rows = conn.execute(
+                text(
+                    """
+                    SELECT payload FROM chat_sessions
+                    ORDER BY updated_at DESC
+                    """
+                )
+            ).mappings().all()
+        sessions: list = []
+        for row in rows:
+            try:
+                sessions.append(json.loads(row["payload"]))
+            except Exception:
+                continue
+        return sessions
+
+    def _sql_delete(self, session_id: str) -> bool:
+        with self._ensure_engine().begin() as conn:
+            result = conn.execute(
+                text("DELETE FROM chat_sessions WHERE id = :id"),
+                {"id": session_id},
+            )
+            return bool(result.rowcount)
 
     def create(self, title: str = "新对话") -> dict:
         session_id = str(uuid.uuid4())
@@ -44,42 +211,63 @@ class SessionStore:
             "createdAt": now,
             "updatedAt": now,
         }
-        self._sessions[session_id] = session
-        self._save()
+        if self._sql_ready:
+            self._sql_upsert(session_id, session)
+        else:
+            self._sessions[session_id] = session
+            self._save_json()
         return dict(session)
 
     def get(self, session_id: str) -> dict | None:
-        return dict(self._sessions.get(session_id, {})) or None
+        if self._sql_ready:
+            session = self._sql_get(session_id)
+        else:
+            session = self._sessions.get(session_id)
+        if not session:
+            return None
+        return dict(session)
 
     def list(self) -> list:
-        sessions = [dict(s) for s in self._sessions.values()]
+        sessions = (
+            self._sql_list()
+            if self._sql_ready
+            else [dict(s) for s in self._sessions.values()]
+        )
         sessions.sort(key=lambda x: x.get("updatedAt", 0), reverse=True)
         return sessions
 
     def add_messages(self, session_id: str, messages: list) -> dict | None:
-        session = self._sessions.get(session_id)
+        session = self.get(session_id)
         if not session:
             return None
         session["messages"].extend(messages)
         session["updatedAt"] = int(time.time() * 1000)
-        if session["title"] == "新对话" and messages:
+        if session.get("title") == "新对话" and messages:
             first_user = next((m for m in messages if m.get("role") == "user"), None)
             if first_user:
                 content = first_user.get("content", "")
                 session["title"] = content[:20] + ("…" if len(content) > 20 else "")
-        self._save()
+        if self._sql_ready:
+            self._sql_upsert(session_id, session)
+        else:
+            self._sessions[session_id] = session
+            self._save_json()
         return dict(session)
 
     def get_history(self, session_id: str, limit: int = 10) -> list:
+        if self._sql_ready:
+            return self._sql_get_history(session_id, limit)
         session = self._sessions.get(session_id)
         if not session:
             return []
         return session.get("messages", [])[-limit:]
 
     def delete(self, session_id: str) -> bool:
+        if self._sql_ready:
+            return self._sql_delete(session_id)
         if session_id in self._sessions:
             del self._sessions[session_id]
-            self._save()
+            self._save_json()
             return True
         return False
 

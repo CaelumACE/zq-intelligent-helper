@@ -12,6 +12,7 @@ venv/
 
 data/conversations.json
 data/embeddings_cache.json
+data/gov_assistant.db
 scripts/model_compare_result.json
 
 # 本地 UI 截图/参考图不入库

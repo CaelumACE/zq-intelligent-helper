@@ -24,6 +24,11 @@ CASES = [
     "什么叫决议",
     "社保补贴和稳岗补贴有什么区别？",
     "帮我写一份关于年终总结的通知",
+    "高新技术企业认定条件是什么？",
+    "怎么申请稳岗返还？",
+    "会议纪要和会议记录有什么区别？",
+    "城乡居民医保怎么参保？",
+    "帮我写一份会议通知",
 ]
 
 SYSTEM_PROMPT = """你是政企智能助手，为政府机关和企事业单位提供专业、准确、合规的服务。
@@ -83,19 +88,26 @@ async def run_case(provider: str, query: str):
     }
 
 
-def _extract_stream_delta(chunk: str) -> str:
-    """从 SSE 数据块中解析增量文本（MiniMax/DeepSeek 均为 delta.content）"""
+def _extract_stream_delta(chunk) -> str:
+    """兼容两种 LLMService 返回：已解析的 delta 字符串或原始 SSE JSON。"""
     if not chunk:
         return ""
-    try:
-        data = json.loads(chunk)
-    except Exception:
-        return ""
-    try:
-        delta = data['choices'][0]['delta']
-        return delta.get('content') or ""
-    except (KeyError, IndexError, TypeError):
-        return ""
+    if isinstance(chunk, str):
+        text = chunk.strip()
+        if not text:
+            return ""
+        try:
+            data = json.loads(text)
+        except Exception:
+            return text
+        chunk = data
+    if isinstance(chunk, dict):
+        try:
+            delta = chunk['choices'][0]['delta']
+            return delta.get('content') or ""
+        except (KeyError, IndexError, TypeError):
+            return ""
+    return ""
 
 
 def _config_for(provider: str):
