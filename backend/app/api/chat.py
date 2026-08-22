@@ -1,9 +1,10 @@
 """对话 API"""
 import time
 from fastapi import APIRouter, HTTPException
-from app.models import ChatRequest, ChatResponse, Reference
+from app.models import ChatRequest, ChatResponse, Reference, ChatMessage
 from app.services.knowledge_service import knowledge_service
 from app.services.llm_service import LLMService
+from app.services.session_store import session_store
 from app.core.logger import logger
 
 router = APIRouter()
@@ -27,37 +28,49 @@ SYSTEM_PROMPT = """你是政企智能助手，为政府机关和企事业单位�
 
 @router.post("", response_model=ChatResponse)
 async def chat(request: ChatRequest):
-    """对话接口（RAG 增强）"""
+    """对话接口（RAG 增强 + 会话持久化）"""
     start_time = time.time()
-    
+
     try:
+        # 会话管理
+        session_id = request.session_id
+        if not session_id:
+            session_id = session_store.create()["id"]
+        elif not session_store.get(session_id):
+            session_id = session_store.create()["id"]
+
         # 1. 知识库检索
         retrieval_start = time.time()
         search_results = knowledge_service.search(request.message, top_k=5)
         retrieval_time = (time.time() - retrieval_start) * 1000
-        
+
         # 2. 构建上下文
         context = knowledge_service.build_context(request.message, top_k=5)
         references = knowledge_service.get_references(search_results)
-        
+
         # 3. 构建 prompt
         messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-        
+
         if context:
             messages.append({
                 "role": "system",
                 "content": f"参考资料：\n{context}"
             })
-        
-        # 添加历史对话（最多最近 6 条）
-        for msg in request.history[-6:]:
-            messages.append({"role": msg.role, "content": msg.content})
-        
+
+        # 优先使用已持久化的会话历史，其次使用请求中的临时历史
+        history = []
+        if request.history:
+            history = [m.to_dict() if isinstance(m, ChatMessage) else m for m in request.history]
+        else:
+            history = session_store.get_history(session_id)
+
+        for msg in history[-6:]:
+            messages.append({"role": msg["role"], "content": msg["content"]})
+
         messages.append({"role": "user", "content": request.message})
-        
+
         # 4. 调用 LLM
         generation_start = time.time()
-        
         try:
             llm_response = await llm_service.chat(messages, stream=False)
             content = _extract_content(llm_response)
@@ -66,22 +79,51 @@ async def chat(request: ChatRequest):
             logger.warning(f"LLM 调用失败，使用知识库兜底: {llm_error}")
             content = _fallback_response(request.message, search_results)
             generation_time = (time.time() - generation_start) * 1000
-        
+
+        # 5. 持久化本轮对话
+        user_msg = {"role": "user", "content": request.message, "timestamp": int(time.time() * 1000)}
+        assistant_msg = {"role": "assistant", "content": content, "references": references, "timestamp": int(time.time() * 1000)}
+        session_store.add_messages(session_id, [user_msg, assistant_msg])
+
         logger.info(
-            f"对话完成: 检索 {retrieval_time:.0f}ms, 生成 {generation_time:.0f}ms, "
-            f"命中 {len(search_results)} 条"
+            f"对话完成: session={session_id[:8]} 检索 {retrieval_time:.0f}ms, "
+            f"生成 {generation_time:.0f}ms, 命中 {len(search_results)} 条"
         )
-        
+
         return ChatResponse(
+            session_id=session_id,
             content=content,
             references=[Reference(**ref) for ref in references],
             retrieval_time_ms=retrieval_time,
             generation_time_ms=generation_time,
         )
-        
+
     except Exception as e:
         logger.error(f"对话失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/sessions")
+async def list_sessions():
+    """获取所有会话"""
+    return {"sessions": session_store.list()}
+
+
+@router.get("/sessions/{session_id}")
+async def get_session(session_id: str):
+    """获取指定会话"""
+    session = session_store.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="会话不存在")
+    return session
+
+
+@router.delete("/sessions/{session_id}")
+async def delete_session(session_id: str):
+    """删除指定会话"""
+    if not session_store.delete(session_id):
+        raise HTTPException(status_code=404, detail="会话不存在")
+    return {"ok": True}
 
 
 def _extract_content(llm_response: dict) -> str:
@@ -89,7 +131,6 @@ def _extract_content(llm_response: dict) -> str:
     try:
         return llm_response['choices'][0]['message']['content']
     except (KeyError, IndexError, TypeError):
-        # MiniMax 格式适配
         try:
             return llm_response['choices'][0]['text']
         except (KeyError, IndexError, TypeError):
@@ -100,10 +141,10 @@ def _fallback_response(query: str, results: list) -> str:
     """LLM 失败时的兜底响应"""
     if not results:
         return "抱歉，暂时无法回答该问题。请尝试更具体地描述，或咨询其他问题。"
-    
-    parts = [f"根据知识库检索结果，为您提供以下相关信息：\n"]
+
+    parts = ["根据知识库检索结果，为您提供以下相关信息：\n"]
     for i, r in enumerate(results[:3], 1):
         parts.append(f"\n【{i}】{r['title']}\n{r['snippet']}")
-    
+
     parts.append("\n\n如需更详细的解答，请继续提问。")
     return "".join(parts)
