@@ -182,6 +182,7 @@ async def chat_stream(request: ChatRequest):
 
         messages = _build_messages(request, session_id, intent, context)
         accumulated: List[str] = []
+        primary_provider = request.provider or settings.LLM_PROVIDER
 
         async def stream_provider(provider: str, status: dict):
             """流式输出单个通道的文本增量，结果写入 status['ok']。"""
@@ -197,13 +198,20 @@ async def chat_stream(request: ChatRequest):
 
         # 主通道生成；失败或无输出时切换兜底通道
         status = {'ok': False}
-        async for event in stream_provider(settings.LLM_PROVIDER, status):
+        async for event in stream_provider(primary_provider, status):
             yield event
 
-        if not status['ok'] or not accumulated:
+        if primary_provider == settings.LLM_FALLBACK_PROVIDER:
+            fallback_candidates = [settings.LLM_PROVIDER]
+        else:
+            fallback_candidates = [settings.LLM_FALLBACK_PROVIDER]
+
+        for fallback_provider in fallback_candidates:
+            if status['ok'] and accumulated:
+                break
             accumulated.clear()
             status = {'ok': False}
-            async for event in stream_provider(settings.LLM_FALLBACK_PROVIDER, status):
+            async for event in stream_provider(fallback_provider, status):
                 yield event
 
         # 双通道都不可用时，仅罗列知识库原文，不编造

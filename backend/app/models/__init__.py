@@ -31,6 +31,7 @@ class ChatRequest(BaseModel):
     message: str
     session_id: Optional[str] = None
     history: List[ChatMessage] = Field(default_factory=list)
+    provider: Optional[str] = None
 
 
 class ChatResponse(BaseModel):

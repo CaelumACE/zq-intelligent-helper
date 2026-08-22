@@ -4,6 +4,7 @@ export interface Message {
   content: string;
   timestamp: number;
   references?: Reference[];
+  model?: string;
 }
 
 export interface Reference {
@@ -20,10 +21,12 @@ export interface Conversation {
   updatedAt: number;
 }
 
-export interface QuickAction {
+export interface QuickActionItem {
   id: string;
   icon: string;
   label: string;
-  description: string;
+  tag: string;
   prompt: string;
 }
+
+export type ModelProvider = 'minimax' | 'deepseek';

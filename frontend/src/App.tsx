@@ -4,12 +4,11 @@ import Header from './components/Header'
 import ChatInput from './components/ChatInput'
 import MessageList from './components/MessageList'
 import WelcomeScreen from './components/WelcomeScreen'
-import type { Message, Conversation, Reference } from './types'
+import WritingPanel from './components/WritingPanel'
+import type { Message, Conversation, Reference, ModelProvider } from './types'
 import './App.css'
 
 const API_BASE = __API_BASE__
-
-const WELCOME_GREETING = '你好，我是政企智能助手。您可以问我政策问题、让我帮您写公文，也可以了解办事流程。请问今天想了解什么？'
 
 function App() {
   const [messages, setMessages] = useState<Message[]>([])
@@ -18,6 +17,8 @@ function App() {
   const [isLoading, setIsLoading] = useState(false)
   const [currentView, setCurrentView] = useState<'chat' | 'home'>('home')
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [model, setModel] = useState<ModelProvider>('minimax')
+  const [writingOpen, setWritingOpen] = useState(false)
 
   const activeRequestRef = useRef<AbortController | null>(null)
   const activeAssistantIdRef = useRef<string | null>(null)
@@ -25,6 +26,12 @@ function App() {
   useEffect(() => {
     loadConversations()
   }, [])
+
+  useEffect(() => {
+    if (!isLoading && messages.length === 0) {
+      setCurrentView('home')
+    }
+  }, [isLoading, messages.length])
 
   const loadConversations = async () => {
     try {
@@ -34,6 +41,14 @@ function App() {
     } catch (e) {
       console.error('加载会话失败', e)
     }
+  }
+
+  const abortActiveRequest = () => {
+    if (activeRequestRef.current) {
+      activeRequestRef.current.abort()
+      activeRequestRef.current = null
+    }
+    activeAssistantIdRef.current = null
   }
 
   const appendAssistant = (
@@ -110,6 +125,7 @@ function App() {
           message: content,
           session_id: sessionId || undefined,
           history,
+          provider: model,
         }),
       })
 
@@ -171,7 +187,12 @@ function App() {
       }
 
       if (started) {
-        appendAssistant(assistantId, '', references)
+        setMessages(prev => prev.map(m => {
+          if (m.id === assistantId) {
+            return { ...m, references: references ?? m.references, model }
+          }
+          return m
+        }))
       }
       loadConversations()
     } catch (error) {
@@ -195,22 +216,16 @@ function App() {
   }
 
   const handleNewChat = () => {
-    if (activeRequestRef.current) {
-      activeRequestRef.current.abort()
-      activeRequestRef.current = null
-    }
-    activeAssistantIdRef.current = null
-    setMessages([
-      {
-        id: 'welcome',
-        role: 'assistant',
-        content: WELCOME_GREETING,
-        timestamp: Date.now(),
-      },
-    ])
+    abortActiveRequest()
+    setMessages([])
     setCurrentSessionId(null)
-    setCurrentView('chat')
+    setCurrentView('home')
     setSidebarOpen(false)
+  }
+
+  const handleStop = () => {
+    abortActiveRequest()
+    setIsLoading(false)
   }
 
   const normalizeMessages = (raw: Message[], sessionId: string): Message[] => {
@@ -223,11 +238,7 @@ function App() {
   }
 
   const handleSelectConversation = async (id: string) => {
-    if (activeRequestRef.current) {
-      activeRequestRef.current.abort()
-      activeRequestRef.current = null
-    }
-    activeAssistantIdRef.current = null
+    abortActiveRequest()
     try {
       const res = await fetch(`${API_BASE}/chat/sessions/${id}`)
       const data = await res.json()
@@ -243,6 +254,7 @@ function App() {
 
   const handleDeleteConversation = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation()
+    e.preventDefault()
     try {
       await fetch(`${API_BASE}/chat/sessions/${id}`, { method: 'DELETE' })
       if (id === currentSessionId) {
@@ -254,19 +266,11 @@ function App() {
     }
   }
 
-  const welcomeMessage: Message = {
-    id: 'welcome',
-    role: 'assistant',
-    content: WELCOME_GREETING,
-    timestamp: Date.now(),
-  }
-
   return (
     <div className="app-shell">
       {/* PC 端固定侧边栏 */}
-      <div className="hidden md:block">
+      <div className="hidden md:block h-full">
         <Sidebar
-          currentView={currentView}
           conversations={conversations}
           currentSessionId={currentSessionId}
           onNewChat={handleNewChat}
@@ -281,7 +285,6 @@ function App() {
       )}
       <div className={`mobile-drawer md:hidden ${sidebarOpen ? 'open' : ''}`}>
         <Sidebar
-          currentView={currentView}
           conversations={conversations}
           currentSessionId={currentSessionId}
           onNewChat={handleNewChat}
@@ -293,21 +296,36 @@ function App() {
       <div className="main-column">
         <Header
           title={currentView === 'home' ? '政企智能助手' : '对话'}
+          model={model}
+          streaming={isLoading}
+          onModelChange={setModel}
           onMenu={() => setSidebarOpen(true)}
+          onWriting={() => setWritingOpen(true)}
         />
 
-        <main className="flex-1 overflow-y-auto">
+        <div className="chat-stream">
           {currentView === 'home' && messages.length === 0 ? (
             <WelcomeScreen onQuickAction={handleSendMessage} />
           ) : (
             <MessageList
-              messages={messages.length === 0 ? [welcomeMessage] : messages}
+              messages={messages}
               isLoading={isLoading}
+              onStop={handleStop}
             />
           )}
-        </main>
+        </div>
 
-        <ChatInput onSend={handleSendMessage} disabled={isLoading} />
+        <ChatInput onSend={handleSendMessage} disabled={isLoading} model={model} />
+
+        <WritingPanel
+          open={writingOpen}
+          model={model}
+          onClose={() => setWritingOpen(false)}
+          onGenerate={(prompt) => {
+            setWritingOpen(false)
+            handleSendMessage(prompt)
+          }}
+        />
       </div>
     </div>
   )

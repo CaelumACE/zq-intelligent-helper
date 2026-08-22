@@ -1,12 +1,40 @@
+import { useMemo } from 'react'
 import type { Conversation } from '../types'
 
 interface SidebarProps {
-  currentView: 'chat' | 'home'
   conversations: Conversation[]
   currentSessionId: string | null
   onNewChat: () => void
   onSelectConversation: (id: string) => void
   onDeleteConversation: (id: string, e: React.MouseEvent) => void
+}
+
+interface Group {
+  title: string
+  items: Conversation[]
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000
+
+function groupByDate(items: Conversation[]): Group[] {
+  const now = new Date()
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+  const yesterdayStart = todayStart - DAY_MS
+
+  const groups: Group[] = [
+    { title: '今天', items: [] },
+    { title: '昨天', items: [] },
+    { title: '更早', items: [] },
+  ]
+
+  for (const item of items) {
+    const t = item.updatedAt || item.createdAt || 0
+    if (t >= todayStart) groups[0].items.push(item)
+    else if (t >= yesterdayStart) groups[1].items.push(item)
+    else groups[2].items.push(item)
+  }
+
+  return groups.filter((g) => g.items.length > 0)
 }
 
 export default function Sidebar({
@@ -16,54 +44,59 @@ export default function Sidebar({
   onSelectConversation,
   onDeleteConversation,
 }: SidebarProps) {
+  const groups = useMemo(() => groupByDate(conversations), [conversations])
+
   return (
-    <aside className="w-[260px] h-full flex-shrink-0 flex flex-col text-[#C7D2E0]" style={{ background: 'var(--navy)' }}>
-      {/* Logo */}
-      <div className="px-5 py-[18px] border-b border-white/[0.08]">
-        <div className="flex items-center gap-2.5">
+    <aside className="sidebar">
+      <div className="side-head">
+        <div className="side-logo">
           <div className="logo-mark">政</div>
-          <span className="text-white font-semibold text-[15px] tracking-[0.5px]">政企智能助手</span>
+          <span>政企智能助手</span>
         </div>
       </div>
 
-      {/* 新建对话 */}
       <button onClick={onNewChat} className="new-btn">
         ＋ 新建对话
       </button>
 
-      {/* 历史对话 */}
-      <div className="flex-1 overflow-y-auto sidebar-scroll px-[10px]">
-        <div className="text-[11px] text-[#7E93AF] px-[10px] pb-1.5 pt-2 tracking-[0.06em]">历史对话</div>
-        {conversations.length === 0 ? (
-          <div className="text-xs text-[#7E93AF]/70 text-center mt-6">暂无历史对话</div>
+      <div className="conv-wrap">
+        {groups.length === 0 ? (
+          <div className="conv-empty">暂无历史对话</div>
         ) : (
-          conversations.map((conv) => {
-            const active = conv.id === currentSessionId
-            return (
-              <div key={conv.id} className="relative mb-0.5">
-                <button
-                  onClick={() => onSelectConversation(conv.id)}
-                  className={`conv-item ${active ? 'active' : ''}`}
-                >
-                  {conv.title || '新对话'}
-                </button>
-                <button
-                  onClick={(e) => onDeleteConversation(conv.id, e)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 w-[18px] h-[18px] rounded-full bg-white/[0.18] text-white/70 hover:text-white items-center justify-center text-[11px] hidden group-hover:flex"
-                  title="删除会话"
-                >
-                  ✕
-                </button>
-              </div>
-            )
-          })
+          groups.map((group) => (
+            <div key={group.title} className="conv-group">
+              <div className="g-title">{group.title}</div>
+              {group.items.map((conv) => {
+                const active = conv.id === currentSessionId
+                return (
+                  <div key={conv.id} className="conv-item-row group">
+                    <button
+                      onClick={() => onSelectConversation(conv.id)}
+                      className={`conv-item ${active ? 'active' : ''}`}
+                    >
+                      <span className="conv-item-text">{conv.title || '新对话'}</span>
+                      <span
+                        className="conv-del"
+                        role="button"
+                        tabIndex={0}
+                        title="删除会话"
+                        onClick={(e) => onDeleteConversation(conv.id, e)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') onDeleteConversation(conv.id, e as unknown as React.MouseEvent)
+                        }}
+                      >
+                        ✕
+                      </span>
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          ))
         )}
       </div>
 
-      {/* 底部 */}
-      <div className="px-5 py-[14px] text-xs text-[#7E93AF] border-t border-white/[0.08] flex items-center gap-2">
-        <span>👤</span> 演示模式 · 无需登录
-      </div>
+      <div className="side-foot">👤 演示模式 · 无需登录</div>
     </aside>
   )
 }

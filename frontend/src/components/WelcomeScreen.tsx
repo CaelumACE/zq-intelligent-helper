@@ -4,30 +4,45 @@ interface WelcomeScreenProps {
   onQuickAction: (prompt: string) => void
 }
 
+const CAPABILITIES = [
+  { dot: 'policy', text: '政策问答', suffix: ' · 有出处可溯源' },
+  { dot: 'writing', text: '公文写作', suffix: ' · 4类公文一键生成' },
+  { dot: 'guide', text: '流程导引', suffix: ' · 材料地点一次说清' },
+]
+
 export default function WelcomeScreen({ onQuickAction }: WelcomeScreenProps) {
   return (
-    <div className="max-w-[820px] mx-auto px-6 pt-10 pb-6">
-      <div className="text-center pt-10 pb-6">
-        <div className="text-[20px] font-semibold text-[var(--navy)] mb-2" style={{ color: 'var(--navy)' }}>
-          您好，我是政企智能助手 👋
+    <div className="chat-inner">
+      <div className="welcome-empty">
+        <div className="greet-row">
+          <div className="greet-avator">政</div>
+          <div className="greet-text">
+            <div className="greet-title">
+              您好，我是政企智能助手 <span className="greet-hand">👋</span>
+            </div>
+            <div className="greet-sub">
+              您可以问我<b>政策问题</b>、让我<b>帮您写公文</b>、或<b>了解办事流程</b>。请问今天想了解什么？
+            </div>
+          </div>
         </div>
-        <div className="text-sm text-[var(--text-3)] mb-9">
-          政策问答 · 公文写作 · 办事流程导引，一个入口全搞定
+
+        <div className="cap-row">
+          {CAPABILITIES.map((cap) => (
+            <span key={cap.text} className="cap-pill">
+              <span className="cap-dot" />{cap.text}{cap.suffix}
+            </span>
+          ))}
         </div>
-      </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-[14px] max-w-[760px] mx-auto">
-        {quickActions.map((action) => (
-          <button key={action.id} onClick={() => onQuickAction(action.prompt)} className="suggest-card">
-            <div className="text-2xl mb-1.5">{action.icon}</div>
-            <div className="text-sm font-medium text-[var(--text-1)]">{action.label}</div>
-            <div className="text-[11px] text-[var(--gold-strong)] mt-1.5">{action.description}</div>
-          </button>
-        ))}
-      </div>
-
-      <div className="mt-8 text-center text-xs text-[var(--text-muted)]">
-        试试输入具体问题，例如「中小企业如何申请税收优惠？」
+        <div className="suggest-grid">
+          {quickActions.map((action) => (
+            <button key={action.id} onClick={() => onQuickAction(action.prompt)} className="suggest-card">
+              <div className="suggest-ic">{action.icon}</div>
+              <div className="suggest-q">{action.label}</div>
+              <span className="suggest-tag">{action.tag}</span>
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   )

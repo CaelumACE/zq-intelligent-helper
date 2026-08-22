@@ -1,11 +1,18 @@
 import { useState, type KeyboardEvent } from 'react'
+import type { ModelProvider } from '../types'
 
 interface ChatInputProps {
   onSend: (content: string) => void
   disabled?: boolean
+  model: ModelProvider
 }
 
-export default function ChatInput({ onSend, disabled = false }: ChatInputProps) {
+const MODEL_LABEL: Record<ModelProvider, string> = {
+  minimax: 'MiniMax',
+  deepseek: 'DeepSeek',
+}
+
+export default function ChatInput({ onSend, disabled = false, model }: ChatInputProps) {
   const [value, setValue] = useState('')
 
   const handleSend = () => {
@@ -23,22 +30,22 @@ export default function ChatInput({ onSend, disabled = false }: ChatInputProps) 
   }
 
   return (
-    <div className="bg-white border-t flex-shrink-0 px-4 md:px-6 pt-3.5 pb-2" style={{ borderColor: 'var(--border)' }}>
-      <div className="max-w-[820px] mx-auto flex gap-3 items-end">
+    <div className="chat-input">
+      <div className="input-row">
         <textarea
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="输入您的问题，Enter 发送，Shift+Enter 换行…"
           rows={1}
-          className="ref-textarea flex-1 min-h-[50px] max-h-[140px]"
+          className="chat-textarea"
         />
-        <button onClick={handleSend} disabled={disabled || !value.trim()} className="send-btn">
-          {disabled ? '生成中…' : '发送'}
+        <button onClick={handleSend} disabled={disabled || !value.trim()} className={`send-btn ${disabled ? 'streaming' : ''}`}>
+          {disabled ? '停止' : '发送'}
         </button>
       </div>
-      <p className="max-w-[820px] mx-auto mt-2 text-center text-xs text-[var(--text-3)]">
-        内容由 AI 生成，请以官方文件为准
+      <p className="input-hint">
+        当前模型：<span className="model-tag">{MODEL_LABEL[model]}</span> · 内容由 AI 生成，请以官方文件为准
       </p>
     </div>
   )

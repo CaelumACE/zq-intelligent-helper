@@ -1,4 +1,4 @@
-/* 政企智能助手 - 与原型的布局骨架一致 */
+/* 布局骨架：与高保真原型 v1.2 一致 */
 
 .app-shell {
   display: flex;
@@ -8,7 +8,6 @@
   overflow: hidden;
 }
 
-/* 主区 */
 .main-column {
   flex: 1;
   display: flex;
@@ -18,7 +17,12 @@
   background: var(--bg);
 }
 
-/* 移动端抽屉 */
+.chat-stream {
+  flex: 1;
+  overflow-y: auto;
+  padding: 28px 0;
+}
+
 .mobile-overlay {
   position: fixed; inset: 0; z-index: 40; background: rgba(18, 48, 79, .45);
 }
@@ -27,5 +31,3 @@
   transform: translateX(-100%); transition: transform .24s ease;
 }
 .mobile-drawer.open { transform: translateX(0); }
-
-.sidebar-scroll { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.25) transparent; }
