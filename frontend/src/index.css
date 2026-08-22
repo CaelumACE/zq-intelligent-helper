@@ -1,15 +1,25 @@
 @import "tailwindcss";
 
 :root {
-  --primary: #1a3a5c;
-  --primary-light: #2c5282;
-  --primary-dark: #0f2440;
-  --accent: #3182ce;
-  --bg-sidebar: #0f2440;
-  --bg-main: #f7fafc;
-  --text-primary: #1a202c;
-  --text-secondary: #4a5568;
-  --border: #e2e8f0;
+  /* 设计规范色板 - 对齐 PRD */
+  --primary: #1A3A6B;
+  --primary-light: #2C5AA0;
+  --primary-dark: #0F2440;
+  --accent: #C8A45A;
+  --accent-light: #D4B87A;
+  --bg-sidebar: #0F2440;
+  --bg-main: #F5F6FA;
+  --bg-surface: #FFFFFF;
+  --text-primary: #1F2329;
+  --text-secondary: #5C6470;
+  --text-muted: #8B95A5;
+  --border: #E3E6ED;
+  --danger: #D94040;
+  --success: #2A8C5A;
+  --warning: #D48806;
+  --info: #1677FF;
+  --radius: 10px;
+  --shadow: 0 1px 4px rgba(26, 58, 107, 0.06);
 }
 
 * {
@@ -37,4 +47,23 @@ body {
 }
 ::-webkit-scrollbar-thumb:hover {
   background: #a0aec0;
+}
+
+/* 动画 */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out;
+}
+
+.animate-pulse {
+  animation: pulse 1.5s ease-in-out infinite;
 }
