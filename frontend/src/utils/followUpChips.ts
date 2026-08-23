@@ -17,9 +17,26 @@ const CONTEXT_CHIPS_BY_TOPIC: Array<{ match: RegExp; chips: string[] }> = [
 const DEFAULT_CHIPS = ['换一种更正式的说法', '列出关键要点', '补充具体示例']
 
 /**
- * 根据整条对话挑选 chip。取最近一条用户消息作为主题依据。
+ * 这些答复属于“开场白/拒答/未覆盖引导”，本身不是具体知识回答，
+ * 下面挂追问 chip 会让用户误以为可以继续追问具体事项，因此不显示 chip。
+ */
+const NO_CHIP_REPLIES = [
+  /您好！我是政企智能助手/,
+  /抱歉，这个问题超出了政企智能助手的服务范围/,
+  /已识别为政务服务事项，但当前知识库暂未收录/,
+]
+
+function isNoChipReply(content: string): boolean {
+  return NO_CHIP_REPLIES.some((pattern) => pattern.test(content))
+}
+
+/**
+ * 根据整条对话挑选 chip。取最近一条 AI 回复作为“是否挂 chip”的判断依据，
+ * 再取最近一条用户消息作为主题依据。
  */
 export function pickFollowUpChips(messages: Message[]): string[] {
+  const lastAssistant = [...messages].reverse().find((m) => m.role === 'assistant')
+  if (lastAssistant && isNoChipReply(lastAssistant.content)) return []
   const lastUser = [...messages].reverse().find((m) => m.role === 'user')
   if (!lastUser) return []
   for (const group of CONTEXT_CHIPS_BY_TOPIC) {

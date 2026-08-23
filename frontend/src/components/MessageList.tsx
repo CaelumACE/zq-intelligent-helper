@@ -18,12 +18,14 @@ interface MessageListProps {
 function MessageItem({
   message,
   isLatest,
+  streaming = false,
   onRegenerate,
   onFollowUp,
   allMessages,
 }: {
   message: Message
   isLatest: boolean
+  streaming?: boolean
   onRegenerate?: (content: string) => void
   onFollowUp?: (prompt: string) => void
   allMessages: Message[]
@@ -49,7 +51,7 @@ function MessageItem({
 
   return (
     <div className={`msg ${isUser ? 'user' : 'ai'}`}>
-      <div className={isUser ? 'user-avatar' : 'ai-avatar'}>{isUser ? '我' : '政'}</div>
+      <div className={isUser ? 'user-avatar' : `ai-avatar${streaming && !isUser ? ' streaming' : ''}`}>{isUser ? '我' : '政'}</div>
       <div className="msg-body">
         <div className={isUser ? 'bubble-user' : 'bubble-ai'}>
           <MarkdownContent content={shownContent} />
@@ -123,6 +125,7 @@ export default function MessageList({ messages, isLoading, onStop, onRegenerate,
           key={msg.id}
           message={msg}
           isLatest={!isLoading && msg.id === latestAiId}
+          streaming={isLoading && msg.role === 'assistant' && msg.id === latestAiId}
           onRegenerate={onRegenerate}
           onFollowUp={onFollowUp}
           allMessages={messages}
@@ -130,7 +133,7 @@ export default function MessageList({ messages, isLoading, onStop, onRegenerate,
       ))}
       {isLoading && (
         <div className="msg ai">
-          <div className="ai-avatar">政</div>
+          <div className="ai-avatar streaming">政</div>
           <div className="msg-body">
             <div className="bubble-ai">
               <span className="loading-dots">
