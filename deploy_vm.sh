@@ -8,6 +8,7 @@ set -e
 
 PROJECT_DIR="$HOME/gov-assistant"
 REPO_URL="https://github.com/CaelumACE/zq-intelligent-helper.git"
+GIT_BRANCH="${1:-dev}"
 
 echo "============================================"
 echo "  政企智能助手 - 虚拟机部署"
@@ -38,12 +39,16 @@ echo "[3/6] 获取项目代码..."
 if [ -d "$PROJECT_DIR" ]; then
     echo "项目目录已存在，拉取最新代码..."
     cd "$PROJECT_DIR"
-    git pull origin main
+    git fetch origin
+    git checkout "$GIT_BRANCH" 2>/dev/null || git checkout -b "$GIT_BRANCH" "origin/$GIT_BRANCH"
+    git pull origin "$GIT_BRANCH"
 else
     echo "克隆项目到 $PROJECT_DIR ..."
     cd "$HOME"
-    git clone "$REPO_URL" "$PROJECT_DIR"
+    git clone -b "$GIT_BRANCH" "$REPO_URL" "$PROJECT_DIR" 2>/dev/null || git clone "$REPO_URL" "$PROJECT_DIR"
     cd "$PROJECT_DIR"
+    git fetch origin
+    git checkout "$GIT_BRANCH" 2>/dev/null || git checkout -b "$GIT_BRANCH" "origin/$GIT_BRANCH"
 fi
 echo "当前版本: $(git log --oneline -1)"
 
