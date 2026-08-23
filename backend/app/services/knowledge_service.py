@@ -34,6 +34,12 @@ SYNONYMS = {
     "会议": ["会议纪要", "纪要"],
 }
 
+# 纯寒暄/闲聊词：这类输入不应召回知识库，走统一拒答文案
+GREETING_WORDS = {
+    '你好', '您好', '你好呀', '嗨', '哈喽', '在吗', '在不在', '谢谢', '多谢',
+    '早上好', '中午好', '晚上好', '早安', '午安', '晚安', '辛苦了', '再见', '拜拜',
+}
+
 STOPWORDS = {
     '哪些', '什么', '怎么', '如何', '请问', '帮我', '一下', '有没有', '是不是', '为什么',
     '可以', '吗', '呢', '啊', '哦', '请', '能', '要', '想', '需要', '了解', '查询', '知道',
@@ -188,6 +194,8 @@ class KnowledgeService:
         """检索知识库（当前为增强关键词检索，后续升级向量语义检索）"""
         results = []
         query_lower = query.lower()
+        if self._is_greeting(query_lower):
+            return []
         expanded_query = self._expand_query(query_lower)
         category = self._detect_category(query_lower)
 
@@ -219,33 +227,34 @@ class KnowledgeService:
                 })
 
         results.sort(key=lambda x: x['score'], reverse=True)
-        results = rerank_service.rerank_sync(query, results)[:top_k]
-        top = results
-        if not top:
+        if not results:
             return []
-        top_score = max(r['score'] for r in top)
+        top_score = max(r['score'] for r in results)
         absolute_threshold = self._absolute_threshold(query_lower, top_score)
         min_score = max(absolute_threshold, top_score * 0.35)
-        return [r for r in top if r['score'] >= min_score]
+        # 先用原始分数过滤，再交给 rerank 排序。
+        # 原来的顺序是把 rerank 后分数再拿去算门槛，rerank 会把所有分数抬到 ~100，
+        # 导致大量正常简单问题（如“生育保险是什么”）被门槛误杀。
+        results = [r for r in results if r['score'] >= min_score]
+        if not results:
+            return []
+        return rerank_service.rerank_sync(query, results)[:top_k]
+
+    def _is_greeting(self, query_lower: str) -> bool:
+        # 仅保留中英文/数字，去除标点后做精确寒暄判断，避免“你好！”漏判
+        clean = re.sub(r'[^0-9a-z\u4e00-\u9fff]+', '', query_lower.strip())
+        return clean in GREETING_WORDS or clean.startswith(
+            ('hello', 'hi', 'nihao', '早上好', '中午好', '晚上好')
+        )
 
     def _absolute_threshold(self, query_lower: str, top_score: float) -> float:
-        """绝对分数门槛，避免问候语/闲聊词借同源公文词高频召回。
+        """绝对分数门槛，使用原始关键词/向量分数判断。
 
-        政策/服务问题 top_score 通常在 150+；
-        公文知识类（GOV）问题语义匹配分较低（20~30），但属于明确知识问答，不能误杀；
-        写作意图放宽门槛。
+        语义分数非常低的输入（纯闲聊、无关问题）top_score 只有 0~3 分，
+        会自然被这个最低门槛挡掉；启用去标点后的寒暄精确拦截后，
+        这里不需要再按“top_score+1”误杀正常简单问题。
         """
-        if top_score >= 150.0:
-            return min(120.0, top_score * 0.70)
-        # 公文知识类问题（如"公文类型有哪些"）分数天然较低，放宽门槛
-        if any(kw in query_lower for kw in ("公文", "文种", "文书", "行文", "格式规范")):
-            return 5.0
-        if top_score < 120.0:
-            # 低置信短文本/闲聊不召回，避免"你好"等命中同源文档
-            return top_score + 1.0
-        if self.is_writing_intent(query_lower):
-            return 95.0
-        return 135.0
+        return 5.0
 
     def _embed_query(self, query: str) -> List[float] | None:
         """查询向量化；失败时返回 None 并按关键词检索降级"""

@@ -63,7 +63,10 @@ SERVICE_PROMPT_EXTRA = """
 如资料未覆盖某项，请明确说明，不要臆造。"""
 
 
-GREETING_PATTERNS = {"你好", "您好", "hi", "hello", "嗨", "早上好", "下午好", "晚上好", "在吗", "在不在", "哈喽"}
+GREETING_PATTERNS = {
+    "你好", "您好", "hi", "hello", "嗨", "哈喽", "早上好", "下午好", "晚上好", "中午好",
+    "早安", "午安", "晚安", "在吗", "在不在", "谢谢", "多谢", "辛苦了", "再见", "拜拜",
+}
 
 def _is_greeting(text: str) -> bool:
     t = text.strip().lower().rstrip("!！?？。.~～")
@@ -239,7 +242,11 @@ async def chat_stream(request: ChatRequest):
 
         if not search_results:
             yield f"data: {json.dumps({'type': 'error', 'message': OUT_OF_SCOPE_RESPONSE}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'type': 'done', 'session_id': session_id, 'references': []}, ensure_ascii=False)}\n\n"
             yield "data: [DONE]\n\n"
+            user_msg = {"role": "user", "content": request.message, "timestamp": int(time.time() * 1000)}
+            assistant_msg = {"role": "assistant", "content": OUT_OF_SCOPE_RESPONSE, "references": [], "timestamp": int(time.time() * 1000)}
+            session_store.add_messages(session_id, [user_msg, assistant_msg])
             return
 
         messages = _build_messages(request, session_id, intent, context)

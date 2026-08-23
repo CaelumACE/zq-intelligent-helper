@@ -141,7 +141,7 @@ class SessionStore:
                 {
                     "id": session_id,
                     "title": session.get("title") or "新对话",
-                    "payload": session,
+                    "payload": json.dumps(session, ensure_ascii=False),
                     "created_at": session.get("createdAt", 0),
                     "updated_at": session.get("updatedAt", 0),
                 },
