@@ -1,4 +1,4 @@
-import type { Message } from '../types'
+import type { Message, Reference } from '../types'
 
 /**
  * 后续指令 chip 规则：只有“进入知识库检索并给出了实质回答”的 AI 回复
@@ -13,8 +13,6 @@ const CONTEXT_CHIPS_BY_TOPIC: Array<{ match: RegExp; chips: string[] }> = [
   { match: /社保|公积金|养老|医疗|失业|工伤|生育/, chips: ['缴费比例是多少', '如何办理补缴', '咨询电话是多少'] },
   { match: /公文|文种|种类|类型/, chips: ['介绍下请示和报告的区别', '函的适用场景', '举个通知的例子'] },
 ]
-
-const DEFAULT_CHIPS = ['换一种更正式的说法', '列出关键要点', '补充具体示例']
 
 /**
  * 这些答复属于固定话术/拒答/未覆盖引导，本身不是具体知识回答，
@@ -32,32 +30,16 @@ const NO_CHIP_REPLIES = [
   /很高兴能帮到您/,
 ]
 
-/**
- * 这些 status 属于非实质问答状态，即使后端 status 没下发、旧消息没带 status，
- * 也必须强制不渲染 chip，作为前后端双重兜底。
- */
-const NO_CHIP_STATUS = new Set([
-  'greeting',
-  'self_intro',
-  'capability',
-  'thanks',
-  'acknowledge',
-  'farewell',
-  'chat',
-  'refusal',
-  'out_of_scope',
-  'writing',
-])
-
 function isNoChipReply(content: string): boolean {
   return NO_CHIP_REPLIES.some((pattern) => pattern.test(content))
 }
 
 export function shouldShowChips(message: Message | undefined): boolean {
   if (!message || message.role !== 'assistant') return false
-  // 全局规则：仅有参考资料（真正进入 RAG 检索）的实质回答才出 chip。
+  // 全局规则：仅有参考资料（真正进入 RAG 检索）的实质回答才出 chip；
+  // 若后端下发 status，只允许 ok（实质问答），writing 场景固定无引用也不出 chip。
+  if (message.status && message.status !== 'ok') return false
   if (!message.references || message.references.length === 0) return false
-  if (message.status && NO_CHIP_STATUS.has(message.status)) return false
   return !isNoChipReply(message.content)
 }
 
@@ -73,15 +55,44 @@ export function isRefusalReply(content: string): boolean {
 /**
  * 根据整条对话挑选 chip。
  * 先按最新 AI 回复做硬闸门：必须是进入 RAG 检索且有引用的实质回答；
- * 再取最近一条用户消息作为主题依据。
+ * 再按后端推荐的关联主题（如有）或检索结果标题匹配追问主题。
  */
-export function pickFollowUpChips(messages: Message[]): string[] {
+function chipsFromReferences(references: Reference[] | undefined): string[] {
+  const refs = references || []
+  const title = refs.map(r => `${r.title} ${r.source}`).join(' ').toLowerCase()
+  const userText = refs.map(r => r.title).join(' ')
+  // 先尝试检索结果标题命中；缺失时回退到最近用户消息关键词。
+  const tryMatch = (text: string) => {
+    for (const group of CONTEXT_CHIPS_BY_TOPIC) {
+      if (group.match.test(text)) return group.chips
+    }
+    return null
+  }
+  const fromRefs = tryMatch(title)
+  if (fromRefs) return fromRefs
+  const fromUser = tryMatch(userText)
+  if (fromUser) return fromUser
+  // 未命中知识库主题时不给泛化建议，避免再次出现无关的公文改写类 chip。
+  return []
+}
+
+/** 按产品规则输出 chip，最多 3 条，保持“额度→材料→流程”的推进顺序。 */
+function normalizeRecommendedChips(chips: string[]): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const chip of chips) {
+    if (!chip || seen.has(chip)) continue
+    seen.add(chip)
+    out.push(chip)
+    if (out.length >= 3) break
+  }
+  return out
+}
+
+export function pickFollowUpChips(messages: Message[], recommended?: string[]): string[] {
   const lastAssistant = [...messages].reverse().find((m) => m.role === 'assistant')
   if (!shouldShowChips(lastAssistant)) return []
-  const lastUser = [...messages].reverse().find((m) => m.role === 'user')
-  if (!lastUser) return []
-  for (const group of CONTEXT_CHIPS_BY_TOPIC) {
-    if (group.match.test(lastUser.content)) return group.chips
-  }
-  return DEFAULT_CHIPS
+  const refs = lastAssistant?.references
+  if (recommended && recommended.length > 0) return normalizeRecommendedChips(recommended)
+  return normalizeRecommendedChips(chipsFromReferences(refs))
 }

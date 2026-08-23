@@ -36,7 +36,38 @@ SYSTEM_PROMPT = """你是政企智能助手，为政府机关和企事业单位�
 
 WRITING_PROMPT_EXTRA = """
 当前用户需要撰写公文。请严格依据参考资料中的公文格式与写作规范生成，结构完整、用语规范。
-如参考资料不足以完成该文种，请说明需要用户补充的信息，不要臆造格式。"""
+如参考资料不足以完成该文种，请说明需要用户补充的信息，不要臆造格式。
+
+回复风格与格式要求（来自产品规范）：
+{style}
+
+要求：先输出一句“以下为参考草稿，请根据实际情况审核修改后下发。”再按国标公文格式排版（标题居中、主送机关顶格、正文分段、落款和日期右对齐）。"""
+
+
+def _style_section(key: str) -> str:
+    """读取 aliases.json response_style_rules 的提示词补充，空配置安全降级。"""
+    rules = knowledge_service.response_style_rules or {}
+    item = (rules.get(key) or {}).copy()
+    lines = []
+    # 既支持英文字段名，也兼容纯中文配置键
+    for label in ("style", "格式要求", "format", "结构化格式", "multi_turn_prefix",
+                  "追问衔接", "reference_display", "引用说明", "disclaimer", "免责声明"):
+        value = item.get(label)
+        if isinstance(value, str) and value.strip():
+            lines.append(value.strip())
+    return "\n".join(lines)
+
+
+def _service_context_text(results) -> str:
+    """办事事项类回答附加上下文：优先用结构化 context_text，缺失时回退 snippet。
+    用于在 prompt 中明确告诉 LLM「结构化字段是权威来源，逐字段精确作答」。"""
+    parts = []
+    for r in (results or [])[:5]:
+        text = (r.get('context_text') or r.get('snippet') or '')
+        if text:
+            parts.append(f"[{r.get('title')}]\n{text}")
+    return "\n\n".join(parts)
+
 def _build_writing_message(request: ChatRequest) -> str:
     """把公文写作面板结构化参数还原为完整写作指令。"""
     doc_type = (request.doc_type or "").strip() or "通知"
@@ -64,7 +95,13 @@ QA_PROMPT_EXTRA = """
 
 SERVICE_PROMPT_EXTRA = """
 当前用户需要办事指引。请严格依据参考资料逐项列出办理条件、所需材料、办理步骤、地点与时限。
-资料中没有明确给出的字段或数字，必须说明「资料未提供」，不得凭常识补全、推测或套用其他地区标准；可引导用户通过 12345/12333 或当地办事窗口核实。"""
+资料中没有明确给出的字段或数字，必须说明「资料未提供」，不得凭常识补全、推测或套用其他地区标准；可引导用户通过 12345/12333 或当地办事窗口核实。
+
+回复风格与结构要求（来自产品规范）：
+{style}
+
+请优先采用以下结构化字段顺序呈现（资料未给出的字段直接省略，不得编造）：
+📋 办理材料 / 📍 办理地点 / ⏰ 办理时限 / 💰 费用 / 📞 咨询电话 / 📝 办理流程"""
 
 FOLLOW_UP_PROMPT_EXTRA = """
 当前用户正在对上一轮回答做后续操作（如总结、列要点、改写、补充、咨询电话等）。
@@ -182,6 +219,22 @@ def _uncovered_response(topic: str, alias_hit=None) -> str:
     )
 
 
+def _out_of_scope_response() -> str:
+    """超范围固定话术：优先读取产品配置 v1.6，缺失时使用内置兜底。"""
+    template = (knowledge_service.refusal_template or {}).get('out_of_scope')
+    return template or OUT_OF_SCOPE_RESPONSE
+
+
+def _no_knowledge_response(topic: str, alias_hit=None) -> str:
+    """知识库未收录固定话术：优先别名兜底引导，其次读取产品配置 v1.6。"""
+    if alias_hit and alias_hit.get('fallback_hints'):
+        return _uncovered_response(topic, alias_hit)
+    template = (knowledge_service.refusal_template or {}).get('no_knowledge')
+    if template:
+        return template
+    return _uncovered_response(topic, None)
+
+
 def _resolve_session_id(request: ChatRequest) -> str:
     session_id = request.session_id
     if not session_id:
@@ -247,11 +300,20 @@ def _build_messages(request: ChatRequest, session_id: str, intent: str, context:
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     user_query = _build_writing_message(request) if intent == "writing" else request.message
     if intent == "writing":
-        messages.append({"role": "system", "content": WRITING_PROMPT_EXTRA})
+        style = _style_section("writing_reply")
+        messages.append({"role": "system", "content": WRITING_PROMPT_EXTRA.format(style=style) if style else WRITING_PROMPT_EXTRA.replace("{style}", "")})
     elif intent == "service":
-        messages.append({"role": "system", "content": SERVICE_PROMPT_EXTRA})
+        style = _style_section("rag_service_reply")
+        messages.append({"role": "system", "content": SERVICE_PROMPT_EXTRA.format(style=style) if style else SERVICE_PROMPT_EXTRA.replace("{style}", "")})
     elif intent == "follow_up":
-        messages.append({"role": "system", "content": FOLLOW_UP_PROMPT_EXTRA})
+        style = _style_section("rag_service_reply")
+        follow_prompt = FOLLOW_UP_PROMPT_EXTRA
+        if style:
+            follow_prompt += "\n\n回复风格与结构要求：\n" + style
+        topic = _previous_user_query(request, session_id)
+        follow_prompt += "\n\n追问衔接要求：回答开头先确认话题，例如「关于您刚才问的{话题}：」。".format(
+            话题=("「%s」" % topic.strip()[:20]) if topic else "上一轮问题")
+        messages.append({"role": "system", "content": follow_prompt})
     else:
         messages.append({"role": "system", "content": QA_PROMPT_EXTRA})
 
@@ -315,15 +377,15 @@ async def chat(request: ChatRequest):
         # 2. 无命中拒答
         if not search_results:
             if alias_hit and alias_hit.get('uncovered'):
-                content = _uncovered_response(context_query or request.message, alias_hit)
+                content = _no_knowledge_response(context_query or request.message, alias_hit)
             else:
-                content = OUT_OF_SCOPE_RESPONSE
+                content = _out_of_scope_response()
             generation_time = 0.0
             references = []
             logger.info(f"拒答（无知识库命中）: {request.message[:40]}")
         else:
             if context is None:
-                context = knowledge_service.build_context(context_query, top_k=5)
+                context = _service_context_text(search_results) if intent == 'service' else knowledge_service.build_context(context_query, top_k=5)
             # 公文写作是生成类任务，引用来源不放大模型生成前的检索命中，避免“写作结果挂检索引用”
             references = [] if intent == 'writing' else knowledge_service.get_references(search_results)
             messages = _build_messages(request, session_id, intent, context)
@@ -398,7 +460,7 @@ async def chat_stream(request: ChatRequest):
     ))
     # 公文写作是生成类任务，其检索仅用于取写作模板，不向用户展示引用来源
     references = [] if intent == 'writing' else knowledge_service.get_references(search_results)
-    context = knowledge_service.build_context_from_results(search_results) if search_results else ""
+    context = _service_context_text(search_results) if (search_results and intent == 'service') else (knowledge_service.build_context_from_results(search_results) if search_results else "")
 
     # 元信息一次性下发
     meta = {
@@ -423,7 +485,7 @@ async def chat_stream(request: ChatRequest):
             return
 
         if not search_results:
-            refuse_text = _uncovered_response(context_query or request.message, alias_hit) if (alias_hit and alias_hit.get('uncovered')) else OUT_OF_SCOPE_RESPONSE
+            refuse_text = _no_knowledge_response(context_query or request.message, alias_hit) if (alias_hit and alias_hit.get('uncovered')) else _out_of_scope_response()
             yield f"data: {json.dumps({'type': 'error', 'message': refuse_text}, ensure_ascii=False)}\n\n"
             yield f"data: {json.dumps({'type': 'done', 'session_id': session_id, 'references': [], 'status': 'refusal'}, ensure_ascii=False)}\n\n"
             yield "data: [DONE]\n\n"

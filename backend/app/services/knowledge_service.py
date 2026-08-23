@@ -80,6 +80,7 @@ class KnowledgeService:
         self.follow_up_patterns = []
         self.dialogue_scenarios = []
         self.refusal_template = {}
+        self.response_style_rules = {}
         path = settings.DATA_DIR / 'aliases.json'
         if not path.exists():
             logger.warning("aliases.json 不存在，别名扩展未启用")
@@ -110,6 +111,7 @@ class KnowledgeService:
                         'show_chips': bool(scenario.get('show_chips', True)),
                     })
             self.refusal_template = data.get('dialogue_templates', {}).get('refusal_template') or {}
+            self.response_style_rules = data.get('dialogue_templates', {}).get('response_style_rules') or {}
             logger.info(f"别名映射加载完成: {len(self.alias_entries)} 组 / {len(self.alias_index)} 条别名 / {len(self.follow_up_patterns)} 条追问模板 / {len(self.dialogue_scenarios)} 个对话场景")
         except Exception as e:
             logger.warning(f"别名映射加载失败: {e}")
@@ -398,6 +400,7 @@ class KnowledgeService:
                     'title': chunk['title'],
                     'category': chunk['category'],
                     'snippet': (chunk.get('context_text') or chunk.get('summary') or '')[:800],
+                    'context_text': (chunk.get('context_text') or chunk.get('summary') or '')[:4000],
                     'source': chunk['source'],
                     'score': score,
                 })
