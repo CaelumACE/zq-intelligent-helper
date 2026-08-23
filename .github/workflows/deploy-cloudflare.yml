@@ -33,4 +33,5 @@ jobs:
         with:
           apiToken: ${{ secrets.CF_API_TOKEN }}
           accountId: ${{ secrets.CF_ACCOUNT_ID }}
+          workingDirectory: frontend
           command: pages deploy dist --project-name=zq-intelligent-helper
