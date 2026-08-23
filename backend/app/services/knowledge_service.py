@@ -107,6 +107,7 @@ class KnowledgeService:
                         'intent': scenario['intent'],
                         'keywords': keywords,
                         'response': scenario.get('response', ''),
+                        'show_chips': bool(scenario.get('show_chips', True)),
                     })
             self.refusal_template = data.get('dialogue_templates', {}).get('refusal_template') or {}
             logger.info(f"别名映射加载完成: {len(self.alias_entries)} 组 / {len(self.alias_index)} 条别名 / {len(self.follow_up_patterns)} 条追问模板 / {len(self.dialogue_scenarios)} 个对话场景")
@@ -126,10 +127,12 @@ class KnowledgeService:
         if not t:
             return None, None
         t_norm = re.sub(r"[~～!！?？。.,，、\s]+$", "", t)
-        t_bare = re.sub(r"[啊呀哦嘛呢吧哟诶唉啦哈]+$", "", t_norm)
+        t_bare = re.sub(r"^(哈|嘿|呵|嘻|呵|哦|噢|嗯)+$", "", t_norm) or t_norm
 
         scenarios = {sc['intent']: sc for sc in self.dialogue_scenarios if sc.get('intent')}
-        priority = ('self_intro', 'capability', 'farewell', 'thanks', 'acknowledge', 'greeting')
+        # chat 与 acknowledge 一样，只接受整句归一化等于，避免“办理流程不错”被误判为闲聊
+        priority = ('self_intro', 'capability', 'farewell', 'thanks', 'acknowledge', 'chat', 'greeting')
+        exact_intents = {'acknowledge', 'chat'}
         for intent in priority:
             scenario = scenarios.get(intent)
             if not scenario:
@@ -138,8 +141,16 @@ class KnowledgeService:
                 kw = str(kw).strip().lower()
                 if not kw:
                     continue
-                if intent in ('acknowledge', 'greeting'):
+                if intent in exact_intents:
                     if t_bare == kw:
+                        return intent, scenario.get('response', '')
+                elif intent == 'greeting':
+                    # 纯英文词风险高（如 hi 会命中 this），仅整句匹配；
+                    # 中文/拼音问候支持复合句包含匹配，覆盖“你好呀我是小弟”
+                    if kw.isascii():
+                        if t_bare == kw:
+                            return intent, scenario.get('response', '')
+                    elif kw in t_norm:
                         return intent, scenario.get('response', '')
                 else:
                     if kw in t_norm:

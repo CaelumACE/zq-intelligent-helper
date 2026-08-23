@@ -24,6 +24,9 @@ const NO_CHIP_REPLIES = [
   /您好！我是政企智能助手/,
   /抱歉，这个问题超出了政企智能助手的服务范围/,
   /已识别为政务服务事项，但当前知识库暂未收录/,
+  /不客气！/,
+  /感谢使用政企智能助手/,
+  /好的，还有其他需要帮助的吗？/,
 ]
 
 function isNoChipReply(content: string): boolean {
