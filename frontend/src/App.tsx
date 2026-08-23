@@ -327,13 +327,14 @@ function App() {
           ) : (
             <MessageList
               messages={messages}
-              isLoading={isLoading}
+              isLoading={isLoading || isStreaming}
               onStop={handleStop}
+              onFollowUp={handleSendMessage}
             />
           )}
         </div>
 
-        <ChatInput onSend={handleSendMessage} onStop={handleStop} disabled={isStreaming || isLoading} model={model} messages={messages} />
+        <ChatInput onSend={handleSendMessage} onStop={handleStop} disabled={isStreaming || isLoading} model={model} />
 
         <WritingPanel
           open={writingOpen}

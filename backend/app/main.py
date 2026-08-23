@@ -50,7 +50,7 @@ async def health():
 
 
 # 生产部署：托管前端静态文件
-_dist = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend", "dist")
+_dist = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "frontend", "dist")
 if not os.path.exists(_dist):
     # Docker 镜像内前端构建产物位于 /app/frontend/dist
     _dist = "/app/frontend/dist"

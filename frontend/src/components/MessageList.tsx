@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { Message } from '../types'
 import { copyText } from '../utils/clipboard'
+import { pickFollowUpChips } from '../utils/followUpChips'
 import MarkdownContent from './MarkdownContent'
 
 const COLLAPSE_THRESHOLD = 300
@@ -11,9 +12,22 @@ interface MessageListProps {
   isLoading: boolean
   onStop?: () => void
   onRegenerate?: (content: string) => void
+  onFollowUp?: (prompt: string) => void
 }
 
-function MessageItem({ message, onRegenerate }: { message: Message; onRegenerate?: (content: string) => void }) {
+function MessageItem({
+  message,
+  isLatest,
+  onRegenerate,
+  onFollowUp,
+  allMessages,
+}: {
+  message: Message
+  isLatest: boolean
+  onRegenerate?: (content: string) => void
+  onFollowUp?: (prompt: string) => void
+  allMessages: Message[]
+}) {
   const [showRefs, setShowRefs] = useState(false)
   const [copied, setCopied] = useState(false)
   const [feedback, setFeedback] = useState<'up' | 'down' | null>(null)
@@ -23,6 +37,9 @@ function MessageItem({ message, onRegenerate }: { message: Message; onRegenerate
   const shownContent = isLong && !expanded
     ? message.content.slice(0, COLLAPSE_PREVIEW)
     : message.content
+
+  // 只在最新一条 AI 回复、且当前没有正在生成时显示 chip
+  const chips = !isUser && isLatest ? pickFollowUpChips(allMessages) : []
 
   const handleCopy = async () => {
     await copyText(message.content)
@@ -54,6 +71,19 @@ function MessageItem({ message, onRegenerate }: { message: Message; onRegenerate
           )}
           {!isUser && message.model && <span className="stream-meta">已完成 · {message.model === 'minimax' ? 'MiniMax' : 'DeepSeek'}</span>}
         </div>
+        {!isUser && chips.length > 0 && (
+          <div className="followup-row">
+            {chips.map((chip) => (
+              <button
+                key={chip}
+                className="followup-chip"
+                onClick={() => onFollowUp?.(chip)}
+              >
+                {chip}
+              </button>
+            ))}
+          </div>
+        )}
         {!isUser && message.references && message.references.length > 0 && (
           <div className="refs">
             <button onClick={() => setShowRefs(!showRefs)} className="ref-head">
@@ -77,11 +107,26 @@ function MessageItem({ message, onRegenerate }: { message: Message; onRegenerate
   )
 }
 
-export default function MessageList({ messages, isLoading, onStop, onRegenerate }: MessageListProps) {
+export default function MessageList({ messages, isLoading, onStop, onRegenerate, onFollowUp }: MessageListProps) {
+  // 找到最新的 AI 消息 id（用于 chip 仅显示在最新一条下方）
+  const latestAiId = (() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === 'assistant') return messages[i].id
+    }
+    return null
+  })()
+
   return (
     <div className="chat-inner">
       {messages.map((msg) => (
-        <MessageItem key={msg.id} message={msg} onRegenerate={onRegenerate} />
+        <MessageItem
+          key={msg.id}
+          message={msg}
+          isLatest={!isLoading && msg.id === latestAiId}
+          onRegenerate={onRegenerate}
+          onFollowUp={onFollowUp}
+          allMessages={messages}
+        />
       ))}
       {isLoading && (
         <div className="msg ai">
