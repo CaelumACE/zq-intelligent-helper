@@ -561,10 +561,42 @@ class KnowledgeService:
         '线上办理', '办理时限', '需要什么材料', '申请条件',
     )
 
+    SMALLTALK_PATTERNS = (
+        '咨询个问题', '请教个问题', '请教一下', '我想了解', '我想问',
+        '问个事', '打听一下', '了解一下', '说说看',
+        '你忙吗', '有人吗', '能问你吗', '可以问吗', '在不在',
+    )
+
+    def is_smalltalk_intent(self, query: str) -> bool:
+        """判断是否为寒暄/元话语（无实质问题，不检索知识库，走LLM自然回复）。"""
+        t = (query or '').strip()
+        if not t:
+            return True
+        # 有明确领域词的不算smalltalk
+        if any(w in t for w in self.DOMAIN_PRIORITY_WORDS):
+            return False
+        # 有办事/申请类动作词的不算
+        if any(w in t for w in ('办理', '申领', '申请', '材料', '怎么办', '去哪里', '流程')):
+            return False
+        # 匹配元话语模式
+        if any(p in t for p in self.SMALLTALK_PATTERNS):
+            return True
+        # 从配置读取额外的smalltalk patterns
+        try:
+            dt = self.aliases_data.get('dialogue_templates', {}) if hasattr(self, 'aliases_data') else {}
+            extra = dt.get('smalltalk_patterns', [])
+            if any(p in t for p in extra):
+                return True
+        except Exception:
+            pass
+        return False
+
     def classify_intent(self, query: str) -> str:
-        """四分类：writing 写作 / service 办事 / qa 问答 / follow_up 后续指令。"""
+        """五分类：writing 写作 / service 办事 / qa 问答 / follow_up 后续指令 / smalltalk 寒暄。"""
         if self.is_follow_up_intent(query):
             return 'follow_up'
+        if self.is_smalltalk_intent(query):
+            return 'smalltalk'
         has_writing_verb = self.is_writing_intent(query)
         doc_type_count = sum(1 for w in self.DOC_TYPE_WORDS if w in query)
         domain_count = sum(1 for w in self.DOMAIN_PRIORITY_WORDS if w in query)
