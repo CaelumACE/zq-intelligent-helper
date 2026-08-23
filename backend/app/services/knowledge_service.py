@@ -246,6 +246,7 @@ class KnowledgeService:
                 'summary': item.get('description', ''),
                 'source': '政务服务',
                 'keywords': self._extract_service_keywords(item),
+                'context_text': self._build_service_context(item),
             }
             self.chunks.append(chunk)
 
@@ -286,6 +287,27 @@ class KnowledgeService:
             doc.get('summary', ''),
         ]
         return ' '.join(str(p) for p in parts if p)
+
+    def _build_service_context(self, item: dict) -> str:
+        """将办事事项的结构化字段拼成 LLM 可读的完整上下文。"""
+        lines = [f"事项名称：{item.get('item_name', '')}"]
+        if item.get('description'):
+            lines.append(f"事项说明：{item['description']}")
+        materials = item.get('required_materials') or []
+        if materials:
+            lines.append("所需材料：\n" + "\n".join(f"- {m}" for m in materials))
+        steps = item.get('steps') or []
+        if steps:
+            lines.append("办理流程：\n" + "\n".join(steps))
+        if item.get('location'):
+            lines.append(f"办理地点：{item['location']}")
+        if item.get('time_limit'):
+            lines.append(f"办理时限：{item['time_limit']}")
+        if item.get('fee'):
+            lines.append(f"收费标准：{item['fee']}")
+        if item.get('consult_phone'):
+            lines.append(f"咨询电话：{item['consult_phone']}")
+        return "\n".join(lines)
 
     def _extract_service_keywords(self, item: dict) -> str:
         parts = [
@@ -348,7 +370,7 @@ class KnowledgeService:
                     'type': chunk['type'],
                     'title': chunk['title'],
                     'category': chunk['category'],
-                    'snippet': (chunk['summary'] or '')[:800],
+                    'snippet': (chunk.get('context_text') or chunk.get('summary') or '')[:800],
                     'source': chunk['source'],
                     'score': score,
                 })

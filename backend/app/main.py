@@ -1,8 +1,11 @@
 """政企智能助手后端服务"""
 import os
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from collections import defaultdict
+from time import monotonic
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from app.core.config import settings
 from app.core.logger import logger
@@ -26,14 +29,35 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS 配置
+# CORS 配置：按 settings.CORS_ORIGINS 收紧，不再放开 *
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# 轻量内存速率限制：按来源 IP 计数，超过阈值返回 429
+_rate_hits: defaultdict[str, list] = defaultdict(list)
+
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    client_ip = request.client.host if request.client else "unknown"
+    now = monotonic()
+    window = settings.RATE_LIMIT_WINDOW_SECONDS
+    limit = settings.RATE_LIMIT_MAX
+
+    if request.url.path.startswith("/api/"):
+        hits = [t for t in _rate_hits[client_ip] if now - t < window]
+        if len(hits) >= limit:
+            return JSONResponse(status_code=429, content={"detail": "请求过于频繁，请稍后再试"})
+        hits.append(now)
+        _rate_hits[client_ip] = hits
+
+    return await call_next(request)
 
 # 注册路由
 app.include_router(chat.router, prefix="/api/chat", tags=["对话"])

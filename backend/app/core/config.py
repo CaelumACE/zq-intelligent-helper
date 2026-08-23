@@ -36,6 +36,16 @@ class Settings:
     RERANK_BASE_URL = os.getenv('RERANK_BASE_URL', '')
     RERANK_API_KEY = os.getenv('RERANK_API_KEY', '')
 
+    # CORS：默认只允许本机与同源部署；生产可按需用逗号分隔扩展
+    CORS_ORIGINS = [o.strip() for o in os.getenv(
+        'CORS_ORIGINS',
+        'http://localhost,http://127.0.0.1,http://192.168.135.129',
+    ).split(',') if o.strip()]
+
+    # 速率限制：每个来源 IP 在窗口内的最大请求数
+    RATE_LIMIT_MAX = int(os.getenv('RATE_LIMIT_MAX', '180'))
+    RATE_LIMIT_WINDOW_SECONDS = int(os.getenv('RATE_LIMIT_WINDOW_SECONDS', '60'))
+
     # 数据目录
     DATA_DIR = Path(os.getenv('DATA_DIR', str(Path(__file__).resolve().parent.parent.parent.parent / 'data')))
     
