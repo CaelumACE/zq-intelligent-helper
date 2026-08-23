@@ -62,6 +62,11 @@ SERVICE_PROMPT_EXTRA = """
 当前用户需要办事指引。请依据参考资料，清晰列出办理条件、所需材料、办理步骤、地点与时限。
 如资料未覆盖某项，请明确说明，不要臆造。"""
 
+FOLLOW_UP_PROMPT_EXTRA = """
+当前用户正在对上一轮回答做后续操作（如总结、列要点、改写、补充、咨询电话等）。
+请严格基于对话历史中上一轮已回答的内容执行；如果历史中已包含所需信息，直接基于历史回答。
+不要把它当作一个全新的无关问题进行检索或作答。"""
+
 
 GREETING_PATTERNS = {
     "你好", "您好", "hi", "hello", "嗨", "哈喽", "早上好", "下午好", "晚上好", "中午好",
@@ -104,6 +109,27 @@ def _resolve_session_id(request: ChatRequest) -> str:
     return session_id
 
 
+def _history_messages(request: ChatRequest, session_id: str) -> List[dict]:
+    """优先取服务端会话历史，新会话则回退请求携带的 history。"""
+    history = session_store.get_history(session_id)
+    if history:
+        return [m if isinstance(m, dict) else (m.to_dict() if hasattr(m, 'to_dict') else m) for m in history]
+    return [m.to_dict() if isinstance(m, ChatMessage) else m for m in (request.history or [])]
+
+
+def _previous_user_query(request: ChatRequest, session_id: str) -> str:
+    """取上一轮真实用户问题，用于后续指令复用原始检索目标。"""
+    for msg in reversed(_history_messages(request, session_id)):
+        try:
+            role = msg.get('role') if isinstance(msg, dict) else getattr(msg, 'role', None)
+            content = msg.get('content') if isinstance(msg, dict) else getattr(msg, 'content', '')
+        except Exception:
+            continue
+        if role == 'user' and content and content.strip() != request.message.strip():
+            return content
+    return request.message
+
+
 def _build_messages(request: ChatRequest, session_id: str, intent: str, context: str):
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     user_query = _build_writing_message(request) if intent == "writing" else request.message
@@ -111,6 +137,8 @@ def _build_messages(request: ChatRequest, session_id: str, intent: str, context:
         messages.append({"role": "system", "content": WRITING_PROMPT_EXTRA})
     elif intent == "service":
         messages.append({"role": "system", "content": SERVICE_PROMPT_EXTRA})
+    elif intent == "follow_up":
+        messages.append({"role": "system", "content": FOLLOW_UP_PROMPT_EXTRA})
     else:
         messages.append({"role": "system", "content": QA_PROMPT_EXTRA})
 
@@ -151,10 +179,13 @@ async def chat(request: ChatRequest):
             session_store.add_messages(session_id, [user_msg, assistant_msg])
             return ChatResponse(session_id=session_id, content=content, references=[], retrieval_time_ms=0, generation_time_ms=0)
 
+        is_follow_up = bool(getattr(request, 'follow_up', False)) or knowledge_service.is_follow_up_intent(request.message)
+        context_query = _previous_user_query(request, session_id) if is_follow_up else request.message
+
         # 1. 知识库检索 + 意图识别
         retrieval_start = time.time()
-        intent = knowledge_service.classify_intent(request.message)
-        search_results = knowledge_service.search(request.message, top_k=5)
+        intent = 'follow_up' if is_follow_up else knowledge_service.classify_intent(request.message)
+        search_results = knowledge_service.search(context_query, top_k=5)
         retrieval_time = (time.time() - retrieval_start) * 1000
 
         # 2. 无命中拒答
@@ -164,7 +195,7 @@ async def chat(request: ChatRequest):
             references = []
             logger.info(f"拒答（无知识库命中）: {request.message[:40]}")
         else:
-            context = knowledge_service.build_context(request.message, top_k=5)
+            context = knowledge_service.build_context(context_query, top_k=5)
             references = knowledge_service.get_references(search_results)
             messages = _build_messages(request, session_id, intent, context)
 
@@ -214,15 +245,24 @@ async def chat_stream(request: ChatRequest):
     """流式对话接口（SSE）：首 token 快速回显，降低体感等待"""
     session_id = _resolve_session_id(request)
     is_greeting = _is_greeting(request.message)
-    intent = knowledge_service.classify_intent(request.message)
-    search_results = [] if is_greeting else knowledge_service.search(request.message, top_k=5)
+    is_follow_up = bool(getattr(request, 'follow_up', False)) or knowledge_service.is_follow_up_intent(request.message)
+    intent = 'follow_up' if is_follow_up else knowledge_service.classify_intent(request.message)
+    if is_follow_up:
+        context_query = _previous_user_query(request, session_id)
+        search_results = knowledge_service.search(context_query, top_k=5)
+    elif is_greeting:
+        context_query = request.message
+        search_results = []
+    else:
+        context_query = request.message
+        search_results = knowledge_service.search(request.message, top_k=5)
     references = knowledge_service.get_references(search_results)
-    context = knowledge_service.build_context(request.message, top_k=5) if search_results else ""
+    context = knowledge_service.build_context(context_query, top_k=5) if search_results else ""
 
     # 元信息一次性下发
     meta = {
         "session_id": session_id,
-        "intent": "greeting" if is_greeting else intent,
+        "intent": "greeting" if is_greeting else ("follow_up" if is_follow_up else intent),
         "references": references,
         "hit_count": len(search_results),
     }

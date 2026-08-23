@@ -37,6 +37,7 @@ class ChatRequest(BaseModel):
     to: Optional[str] = None
     body: Optional[str] = None
     sign: Optional[str] = None
+    follow_up: Optional[bool] = None
 
 
 class ChatResponse(BaseModel):

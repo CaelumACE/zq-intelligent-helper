@@ -85,7 +85,7 @@ function App() {
     })
   }
 
-  const handleSendMessage = async (content: string, writing?: WritingRequest) => {
+  const handleSendMessage = async (content: string, writing?: WritingRequest, followUp = false) => {
     if (isLoading || isStreaming) return
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -129,6 +129,7 @@ function App() {
           session_id: sessionId || undefined,
           history,
           provider: model,
+          follow_up: followUp || undefined,
           doc_type: writing?.docType,
           title: writing?.title,
           to: writing?.to,
@@ -329,7 +330,7 @@ function App() {
               messages={messages}
               isLoading={isLoading || isStreaming}
               onStop={handleStop}
-              onFollowUp={handleSendMessage}
+              onFollowUp={(prompt) => handleSendMessage(prompt, undefined, true)}
             />
           )}
         </div>

@@ -14,9 +14,9 @@ SYNONYMS = {
     "企": ["企业", "公司", "单位", "市场主体", "中小微企业"],
     "补贴": ["补助", "扶持", "奖补", "支持资金", "返还", "就业补贴", "社保补贴"],
     "小微": ["中小微企业", "小规模纳税人", "小型微利企业"],
-    "社保": ["社会保险", "养老保险", "医疗保险", "失业保险", "工伤保险", "生育保险"],
+    "社保": ["社会保险", "五险", "养老保险", "医疗保险", "失业保险", "工伤保险", "生育保险"],
     "医保": ["医疗保险", "基本医保", "大病保险", "医保报销"],
-    "公积金": ["住房公积金", "缴存", "提取公积金"],
+    "公积金": ["住房公积金", "住房公积金贷款", "缴存", "提取公积金", "公积金提取", "公积金贷款"],
     "执照": ["营业执照", "工商注册", "企业登记", "市场主体登记"],
     "办证": ["办理", "申领", "申请", "登记", "注册"],
     "落户": ["户口", "户口迁移", "迁户"],
@@ -221,7 +221,7 @@ class KnowledgeService:
                     'type': chunk['type'],
                     'title': chunk['title'],
                     'category': chunk['category'],
-                    'snippet': (chunk['summary'] or '')[:200],
+                    'snippet': (chunk['summary'] or '')[:800],
                     'source': chunk['source'],
                     'score': score,
                 })
@@ -326,8 +326,14 @@ class KnowledgeService:
         terms = list(dict.fromkeys(terms))
         return query + ' ' + ' '.join(terms)
 
+    # 领域强指令词：命中的类别需要至少在下游分类感知加权，避免政务办事问被公文模板抢走
+    _DOMAIN_GUARDS = {
+        '社保医保': ['社保', '医保', '公积金', '养老', '医疗', '生育', '工伤', '失业'],
+        '民生保障': ['公积金', '租房', '住房', '贷款', '补贴', '补助', '救助'],
+    }
+
     def _detect_category(self, query: str) -> str:
-        """粗粒度识别问题所属类别"""
+        """粗粒度识别问题所属类别；强领域词可单命中生效。"""
         best = ''
         best_count = 0
         for category, words in CATEGORY_KEYWORDS.items():
@@ -335,7 +341,12 @@ class KnowledgeService:
             if count > best_count:
                 best = category
                 best_count = count
-        return best if best_count >= 2 else ''
+        if best:
+            return best
+        for category, words in self._DOMAIN_GUARDS.items():
+            if any(w in query for w in words):
+                return category
+        return ''
 
     # 写作动词与常见写作句式
     WRITING_VERBS = {'写', '起草', '拟', '撰写', '生成', '写一份', '写一个', '帮我写', '起个稿'}
@@ -350,15 +361,45 @@ class KnowledgeService:
         """判断是否知识问答意图（避免误入写作模板）"""
         return any(w in query for w in self.QUESTION_MARKERS)
 
+    # 明确的公文文种。只有写作动词 + 文种同时出现时，才认定为公文写作意图。
+    DOC_TYPE_WORDS = {
+        '通知', '报告', '请示', '函', '纪要', '通报', '公告', '决定', '意见',
+    }
+    # 政务办事/政策问答的强领域词。哪怕出现“写/申请”等词，只要命中这些词，也应优先当政务问题处理。
+    DOMAIN_PRIORITY_WORDS = {
+        '公积金', '住房公积金', '社保', '医保', '养老', '医疗', '生育', '工伤', '失业',
+        '提取', '缴存', '贷款', '额度', '比例', '补缴', '材料', '流程', '办理', '咨询电话',
+        '缴费', '补贴', '救助', '居住证', '落户',
+    }
+    # 后续指令词：这些输入依赖上轮结果，单独做 RAG 检索容易错配到公文知识。
+    FOLLOW_UP_PATTERNS = (
+        '换一种', '换个', '更正式', '更口语', '更简洁', '再写', '继续', '扩写', '展开',
+        '补充', '润色', '改写', '总结一下', '概括', '归纳', '举例子', '举例', '示例',
+        '重新写', '再来一版', '另一个版本', '换个说法', '换个方式', '调整', '分段',
+        '加标题', '改成', '详细一点', '简单一点', '列出关键', '列出要点', '列要点',
+        '要点是什么', '有哪些要点', '梳理',
+    )
+
     def classify_intent(self, query: str) -> str:
-        """三分类：writing 写作 / service 办事 / qa 问答"""
-        if self.is_writing_intent(query):
+        """四分类：writing 写作 / service 办事 / qa 问答 / follow_up 后续指令。"""
+        if self.is_follow_up_intent(query):
+            return 'follow_up'
+        has_writing_verb = self.is_writing_intent(query)
+        doc_type_count = sum(1 for w in self.DOC_TYPE_WORDS if w in query)
+        domain_count = sum(1 for w in self.DOMAIN_PRIORITY_WORDS if w in query)
+        # 领域词 > 文种词时，政务问题反向保护，优先走办事/问答。
+        if has_writing_verb and doc_type_count >= domain_count and doc_type_count >= 1:
             return 'writing'
         if any(w in query for w in ('办理', '申领', '申请', '需要什么材料', '材料', '怎么办', '去哪里')):
             return 'service'
         if self.is_question_intent(query):
             return 'qa'
+        if domain_count:
+            return 'service'
         return 'qa'
+
+    def is_follow_up_intent(self, query: str) -> bool:
+        return any(p in query for p in self.FOLLOW_UP_PATTERNS)
 
     def _title_bonus(self, query: str, title: str) -> float:
         clean = self._clean_query(query)
