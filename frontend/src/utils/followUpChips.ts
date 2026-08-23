@@ -31,6 +31,15 @@ function isNoChipReply(content: string): boolean {
 }
 
 /**
+ * 拒答/无结果判定：用于隐藏引用来源区等位置。
+ * 只要回答属于“未收录 / 超出范围 / 暂无相关信息”，就不应再展示引用来源。
+ */
+export function isRefusalReply(content: string): boolean {
+  if (isNoChipReply(content)) return true
+  return /暂无相关信息|未提供具体|未收录|暂未查询到|暂未找到|知识库中暂无|超出.*服务范围/.test(content || '')
+}
+
+/**
  * 根据整条对话挑选 chip。取最近一条 AI 回复作为“是否挂 chip”的判断依据，
  * 再取最近一条用户消息作为主题依据。
  */

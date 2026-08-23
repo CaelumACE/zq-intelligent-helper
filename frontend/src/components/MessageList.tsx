@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { Message } from '../types'
 import { copyText } from '../utils/clipboard'
-import { pickFollowUpChips } from '../utils/followUpChips'
+import { pickFollowUpChips, isRefusalReply } from '../utils/followUpChips'
 import MarkdownContent from './MarkdownContent'
 
 const COLLAPSE_THRESHOLD = 300
@@ -35,6 +35,7 @@ function MessageItem({
   const [feedback, setFeedback] = useState<'up' | 'down' | null>(null)
   const [expanded, setExpanded] = useState(false)
   const isUser = message.role === 'user'
+  const refusal = !isUser && isRefusalReply(message.content)
   const isLong = !isUser && message.content.length > COLLAPSE_THRESHOLD
   const shownContent = isLong && !expanded
     ? message.content.slice(0, COLLAPSE_PREVIEW)
@@ -62,17 +63,19 @@ function MessageItem({
             <button className="collapse-toggle" onClick={() => setExpanded(false)}>收起 ▲</button>
           )}
         </div>
-        <div className="msg-actions">
-          <button className="mini-btn" onClick={handleCopy}>{copied ? '✓ 已复制' : '📋 复制'}</button>
-          {!isUser && (
-            <>
-              <button className={`mini-btn ${feedback === 'up' ? 'active' : ''}`} onClick={() => setFeedback(feedback === 'up' ? null : 'up')}>👍</button>
-              <button className={`mini-btn ${feedback === 'down' ? 'active' : ''}`} onClick={() => setFeedback(feedback === 'down' ? null : 'down')}>👎</button>
-              {onRegenerate && <button className="mini-btn" onClick={() => onRegenerate(message.content)}>🔄 重新生成</button>}
-            </>
-          )}
-          {!isUser && message.model && <span className="stream-meta">已完成 · {message.model === 'minimax' ? 'MiniMax' : 'DeepSeek'}</span>}
-        </div>
+        {!streaming && !refusal && (
+          <div className="msg-actions">
+            <button className="mini-btn" onClick={handleCopy}>{copied ? '✓ 已复制' : '📋 复制'}</button>
+            {!isUser && (
+              <>
+                <button className={`mini-btn ${feedback === 'up' ? 'active' : ''}`} onClick={() => setFeedback(feedback === 'up' ? null : 'up')}>👍</button>
+                <button className={`mini-btn ${feedback === 'down' ? 'active' : ''}`} onClick={() => setFeedback(feedback === 'down' ? null : 'down')}>👎</button>
+                {onRegenerate && <button className="mini-btn" onClick={() => onRegenerate(message.content)}>🔄 重新生成</button>}
+              </>
+            )}
+            {!isUser && message.model && <span className="stream-meta">已完成 · {message.model === 'minimax' ? 'MiniMax' : 'DeepSeek'}</span>}
+          </div>
+        )}
         {!isUser && chips.length > 0 && (
           <div className="followup-row">
             {chips.map((chip) => (
@@ -86,7 +89,7 @@ function MessageItem({
             ))}
           </div>
         )}
-        {!isUser && message.references && message.references.length > 0 && (
+        {!isUser && !refusal && message.references && message.references.length > 0 && (
           <div className="refs">
             <button onClick={() => setShowRefs(!showRefs)} className="ref-head">
               {showRefs ? '▴ 收起引用来源' : '▾ 展开引用来源'}（{message.references.length}）

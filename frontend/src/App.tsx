@@ -23,6 +23,7 @@ function App() {
 
   const activeRequestRef = useRef<AbortController | null>(null)
   const activeAssistantIdRef = useRef<string | null>(null)
+  const statusRef = useRef<Message['status'] | undefined>(undefined)
 
   useEffect(() => {
     loadConversations()
@@ -97,6 +98,7 @@ function App() {
 
   const handleSendMessage = async (content: string, writing?: WritingRequest, followUp = false) => {
     if (isLoading || isStreaming) return
+    statusRef.current = undefined
     const userMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
@@ -171,7 +173,7 @@ function App() {
             const payload = line.slice(5).trim()
             if (!payload || payload === '[DONE]') continue
 
-            let evt: { type?: string; content?: string; message?: string; references?: Reference[]; session_id?: string }
+            let evt: { type?: string; content?: string; message?: string; references?: Reference[]; session_id?: string; status?: Message['status'] }
             try {
               evt = JSON.parse(payload)
             } catch {
@@ -184,7 +186,9 @@ function App() {
                 setCurrentSessionId(evt.session_id)
               }
               if (evt.references) references = evt.references
+              if (evt.status) statusRef.current = evt.status
             } else if (evt.type === 'done') {
+              if (evt.status) statusRef.current = evt.status
               // Reload conversation list to show the new session in sidebar
               loadConversations()
             } else if (evt.type === 'delta' && evt.content) {
@@ -211,7 +215,7 @@ function App() {
       if (started) {
         setMessages(prev => prev.map(m => {
           if (m.id === assistantId) {
-            return { ...m, references: references ?? m.references, model }
+            return { ...m, references: references ?? m.references, model, status: statusRef.current }
           }
           return m
         }))
