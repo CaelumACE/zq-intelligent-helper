@@ -15,6 +15,7 @@ function App() {
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [isStreaming, setIsStreaming] = useState(false)
   const [currentView, setCurrentView] = useState<'chat' | 'home'>('home')
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [model, setModel] = useState<ModelProvider>('deepseek')
@@ -85,7 +86,7 @@ function App() {
   }
 
   const handleSendMessage = async (content: string, writing?: WritingRequest) => {
-    if (isLoading) return
+    if (isLoading || isStreaming) return
     const userMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
@@ -98,6 +99,7 @@ function App() {
     setMessages(nextMessages)
     setCurrentView('chat')
     setIsLoading(true)
+    setIsStreaming(true)
     setSidebarOpen(false)
 
     let sessionId = currentSessionId
@@ -214,18 +216,24 @@ function App() {
         }
       }
     } finally {
-      if (activeRequestRef.current === controller) {
+      const isCurrentRequest = activeRequestRef.current === controller
+      if (isCurrentRequest) {
         activeRequestRef.current = null
       }
       if (activeAssistantIdRef.current === assistantId) {
         activeAssistantIdRef.current = null
       }
       setIsLoading(false)
+      if (isCurrentRequest) {
+        setIsStreaming(false)
+      }
     }
   }
 
   const handleNewChat = () => {
     abortActiveRequest()
+    setIsLoading(false)
+    setIsStreaming(false)
     setMessages([])
     setCurrentSessionId(null)
     setCurrentView('home')
@@ -235,6 +243,7 @@ function App() {
   const handleStop = () => {
     abortActiveRequest()
     setIsLoading(false)
+    setIsStreaming(false)
   }
 
   const normalizeMessages = (raw: Message[], sessionId: string): Message[] => {
@@ -306,7 +315,7 @@ function App() {
         <Header
           title={currentView === 'home' ? '政企智能助手' : '对话'}
           model={model}
-          streaming={isLoading}
+          streaming={isStreaming || isLoading}
           onModelChange={setModel}
           onMenu={() => setSidebarOpen(true)}
           onWriting={() => setWritingOpen(true)}
@@ -314,7 +323,7 @@ function App() {
 
         <div className={`chat-stream ${currentView === 'home' && messages.length === 0 ? 'home' : ''}`}>
           {currentView === 'home' && messages.length === 0 ? (
-            <WelcomeScreen onQuickAction={handleSendMessage} disabled={isLoading} />
+            <WelcomeScreen onQuickAction={handleSendMessage} disabled={isStreaming || isLoading} />
           ) : (
             <MessageList
               messages={messages}
@@ -324,7 +333,7 @@ function App() {
           )}
         </div>
 
-        <ChatInput onSend={handleSendMessage} onStop={handleStop} disabled={isLoading} model={model} messages={messages} />
+        <ChatInput onSend={handleSendMessage} onStop={handleStop} disabled={isStreaming || isLoading} model={model} messages={messages} />
 
         <WritingPanel
           open={writingOpen}
