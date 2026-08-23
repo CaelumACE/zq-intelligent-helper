@@ -317,14 +317,19 @@ function App() {
   const handleDeleteConversation = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation()
     e.preventDefault()
+
+    // 先在本地点掉侧栏条目，再发请求，避免等 DELETE 响应 + 列表重载造成的延迟
+    setConversations(prev => prev.filter(c => c.id !== id))
+    if (id === currentSessionId) {
+      handleNewChat()
+    }
+
     try {
       await fetch(`${API_BASE}/chat/sessions/${id}`, { method: 'DELETE' })
-      if (id === currentSessionId) {
-        handleNewChat()
-      }
-      loadConversations()
     } catch (err) {
       console.error('删除会话失败', err)
+      // 删除请求失败时重载一次，恢复真实会话列表
+      loadConversations()
     }
   }
 
