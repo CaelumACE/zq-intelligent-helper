@@ -102,8 +102,15 @@ OUT_OF_SCOPE_RESPONSE = (
 )
 
 
-def _uncovered_response(topic: str) -> str:
+def _uncovered_response(topic: str, alias_hit=None) -> str:
     topic = (topic or "").strip() or "该事项"
+    if alias_hit and alias_hit.get("fallback_hints"):
+        hint = "\n".join(f"- {h}" for h in alias_hit.get("fallback_hints"))
+        return (
+            f"您咨询的「{topic}」已识别为政务服务事项，但当前知识库暂未收录详细办理信息。\n\n"
+            f"{hint}\n\n"
+            "如果您想了解其他具体政策或办事流程，也可以换一种问法告诉我。"
+        )
     return (
         f"您咨询的「{topic}」已识别为政务服务事项，但当前知识库暂未收录详细办理信息。\n\n"
         "为避免给您错误信息，建议通过官方渠道确认：\n"
@@ -116,10 +123,12 @@ def _uncovered_response(topic: str) -> str:
 def _resolve_session_id(request: ChatRequest) -> str:
     session_id = request.session_id
     if not session_id:
-        session_id = session_store.create()["id"]
-    elif not session_store.get(session_id):
-        session_id = session_store.create()["id"]
-    return session_id
+        return session_store.create()["id"]
+    if session_store.get(session_id):
+        return session_id
+    # 客户端已提供 sid 但服务端还未建会话：以客户端 sid 落库，
+    # 否则后续带同一 sid 的追问会查不到历史，导致追问被当成独立问题。
+    return session_store.create(session_id=session_id)["id"]
 
 
 def _history_messages(request: ChatRequest, session_id: str) -> List[dict]:
@@ -150,6 +159,7 @@ def _build_jsonl_record(session_id: str, raw_query: str, expanded_query: str, in
         alias = {
             "aliases": alias_hit.get("aliases"),
             "canonical": alias_hit.get("canonical"),
+            "fallback_hint": (alias_hit.get("fallback_hints") or [None])[0],
             "uncovered": bool(alias_hit.get("uncovered")),
         }
     return {
@@ -233,7 +243,7 @@ async def chat(request: ChatRequest):
         # 2. 无命中拒答
         if not search_results:
             if alias_hit and alias_hit.get('uncovered'):
-                content = _uncovered_response(context_query or request.message)
+                content = _uncovered_response(context_query or request.message, alias_hit)
             else:
                 content = OUT_OF_SCOPE_RESPONSE
             generation_time = 0.0
@@ -336,7 +346,7 @@ async def chat_stream(request: ChatRequest):
             return
 
         if not search_results:
-            refuse_text = _uncovered_response(context_query or request.message) if (alias_hit and alias_hit.get('uncovered')) else OUT_OF_SCOPE_RESPONSE
+            refuse_text = _uncovered_response(context_query or request.message, alias_hit) if (alias_hit and alias_hit.get('uncovered')) else OUT_OF_SCOPE_RESPONSE
             yield f"data: {json.dumps({'type': 'error', 'message': refuse_text}, ensure_ascii=False)}\n\n"
             yield f"data: {json.dumps({'type': 'done', 'session_id': session_id, 'references': []}, ensure_ascii=False)}\n\n"
             yield "data: [DONE]\n\n"

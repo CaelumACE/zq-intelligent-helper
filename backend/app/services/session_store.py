@@ -208,8 +208,10 @@ class SessionStore:
             )
             return bool(result.rowcount)
 
-    def create(self, title: str = "新对话") -> dict:
-        session_id = str(uuid.uuid4())
+    def create(self, title: str = "新对话", session_id: str | None = None) -> dict:
+        session_id = session_id or str(uuid.uuid4())
+        if self.get(session_id):
+            raise ValueError(f"会话已存在: {session_id}")
         now = int(time.time() * 1000)
         session = {
             "id": session_id,

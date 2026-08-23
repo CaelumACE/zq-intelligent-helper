@@ -85,9 +85,13 @@ class KnowledgeService:
                 data = json.load(f)
             for entry in data.get('aliases', []):
                 self.alias_entries.append(entry)
-                for alias in entry.get('aliases', []) or []:
-                    if alias:
-                        self.alias_index[alias] = entry
+                terms = list(entry.get('aliases', []) or [])
+                canonical = entry.get('canonical') or ''
+                if canonical and canonical not in terms:
+                    terms.append(canonical)
+                for term in terms:
+                    if term:
+                        self.alias_index[term] = entry
             logger.info(f"别名映射加载完成: {len(self.alias_entries)} 组 / {len(self.alias_index)} 条别名")
         except Exception as e:
             logger.warning(f"别名映射加载失败: {e}")
@@ -100,9 +104,16 @@ class KnowledgeService:
         """
         if not self.alias_index:
             return '', None
-        matched = [(alias, entry) for alias, entry in self.alias_index.items() if alias in query]
+        # 精确/最长匹配优先：避免“高龄津贴”（优待证别名）抢先于更具体的“高龄津贴申领”标准名
+        matched = sorted(
+            ((term, entry) for term, entry in self.alias_index.items() if term in query),
+            key=lambda pair: len(pair[0]),
+            reverse=True,
+        )
         if not matched:
             return '', None
+        best_len = len(matched[0][0])
+        matched = [(term, entry) for term, entry in matched if len(term) == best_len]
 
         seen = set()
         unique = []
@@ -123,6 +134,12 @@ class KnowledgeService:
         target_ids = list(dict.fromkeys(target_ids))
         uncovered = all((entry.get('target_ids') or []) == [] for _, entry in unique)
 
+        fallback_hints = []
+        for _, entry in unique:
+            hint = entry.get('fallback_hint') or ''
+            if hint:
+                fallback_hints.append(hint)
+
         extra = ''
         if not uncovered:
             extra_terms = list(dict.fromkeys(canonicals + [a for a in aliases if a not in canonicals]))
@@ -132,6 +149,7 @@ class KnowledgeService:
             'aliases': aliases,
             'canonical': canonicals,
             'target_ids': target_ids,
+            'fallback_hints': fallback_hints,
             'uncovered': uncovered,
         }
         return extra, alias_hit

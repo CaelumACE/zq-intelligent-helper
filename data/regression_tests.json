@@ -1,0 +1,209 @@
+{
+  "version": "1.0",
+  "updated": "2026-08-23",
+  "owner": "产品经理小赵",
+  "description": "RAG回归测试集，20条用例。每次代码变更后在沙盒批量跑一遍，防止修复引入新问题。",
+  "test_cases": [
+    {
+      "id": 1,
+      "query": "公积金贷款最高额度是多少",
+      "intent": "service",
+      "expected_chunks": ["POL-042"],
+      "validation": "回答包含威海80万/120万、利率2.85%等具体数据",
+      "category": "核心问答",
+      "priority": "P0"
+    },
+    {
+      "id": 2,
+      "query": "公积金提取条件",
+      "intent": "service",
+      "expected_chunks": ["SVC-005"],
+      "validation": "回答包含购房/租房/还贷等提取情形",
+      "category": "核心问答",
+      "priority": "P0"
+    },
+    {
+      "id": 3,
+      "query": "准生证怎么办",
+      "intent": "service",
+      "expected_chunks": ["SVC-015"],
+      "validation": "别名映射命中出生登记，回答包含办理流程",
+      "category": "别名映射",
+      "priority": "P1"
+    },
+    {
+      "id": 4,
+      "query": "高龄补贴怎么申请",
+      "intent": "service",
+      "expected_chunks": ["SVC-017", "POL-031"],
+      "validation": "别名映射命中老年人优待证，回答包含办理条件或引导",
+      "category": "别名映射",
+      "priority": "P1"
+    },
+    {
+      "id": 5,
+      "query": "社保卡补办",
+      "intent": "service",
+      "expected_chunks": [],
+      "validation": "识别为已知事项但知识库未覆盖，引导拨打12333，不用通用信息编造",
+      "category": "空映射引导",
+      "priority": "P1"
+    },
+    {
+      "id": 6,
+      "query": "社保缴费比例",
+      "intent": "qa",
+      "expected_chunks": ["POL-041"],
+      "validation": "包含养老/医疗/失业等险种缴费比例数字",
+      "category": "核心问答",
+      "priority": "P0"
+    },
+    {
+      "id": 7,
+      "query": "医保报销比例是多少",
+      "intent": "qa",
+      "expected_chunks": ["SVC-006", "POL-016"],
+      "validation": "包含具体比例或政策说明",
+      "category": "核心问答",
+      "priority": "P1"
+    },
+    {
+      "id": 8,
+      "query": "退休年龄最新规定",
+      "intent": "qa",
+      "expected_chunks": ["POL-038"],
+      "validation": "包含延迟退休时间表（男63岁等）",
+      "category": "核心问答",
+      "priority": "P1"
+    },
+    {
+      "id": 9,
+      "query": "营业执照怎么办理",
+      "intent": "service",
+      "expected_chunks": ["SVC-004"],
+      "validation": "包含条件/材料/流程",
+      "category": "核心问答",
+      "priority": "P0"
+    },
+    {
+      "id": 10,
+      "query": "居住证办理条件",
+      "intent": "service",
+      "expected_chunks": ["SVC-008"],
+      "validation": "包含半年/合法就业/住所等条件",
+      "category": "核心问答",
+      "priority": "P1"
+    },
+    {
+      "id": 11,
+      "query": "不动产权证怎么办",
+      "intent": "service",
+      "expected_chunks": ["SVC-009"],
+      "validation": "别名命中不动产登记，回答包含过户流程",
+      "category": "别名映射",
+      "priority": "P1"
+    },
+    {
+      "id": 12,
+      "query": "帮我写一份通知",
+      "intent": "writing",
+      "expected_chunks": [],
+      "validation": "走公文写作流程，询问发文机关/事由等要素",
+      "category": "公文写作",
+      "priority": "P0"
+    },
+    {
+      "id": 13,
+      "query": "公积金提取申请怎么写",
+      "intent": "service",
+      "expected_chunks": ["SVC-005"],
+      "validation": "不误判为writing意图（政务词反向保护），走办事咨询",
+      "category": "意图保护",
+      "priority": "P0"
+    },
+    {
+      "id": 14,
+      "query": "你好",
+      "intent": "qa",
+      "expected_chunks": [],
+      "validation": "正常问候回复，不拒答不报错",
+      "category": "基础对话",
+      "priority": "P1"
+    },
+    {
+      "id": 15,
+      "query": "列出关键要点",
+      "follow_up": true,
+      "context_query": "公积金贷款最高额度是多少",
+      "intent": "follow_up",
+      "expected_chunks": ["POL-042"],
+      "validation": "基于上一轮公积金内容总结要点，不跑偏到公文文种",
+      "category": "追问",
+      "priority": "P0"
+    },
+    {
+      "id": 16,
+      "query": "那医保呢",
+      "follow_up": true,
+      "context_query": "社保缴费比例",
+      "intent": "follow_up",
+      "expected_chunks": ["POL-041"],
+      "validation": "改写为医疗保险相关检索，回答包含医保缴费比例",
+      "category": "追问改写",
+      "priority": "P1"
+    },
+    {
+      "id": 17,
+      "query": "多久能办下来",
+      "follow_up": true,
+      "context_query": "居住证办理",
+      "intent": "follow_up",
+      "expected_chunks": ["SVC-008"],
+      "validation": "改写为居住证办理时限检索，回答包含time_limit信息",
+      "category": "追问改写",
+      "priority": "P1"
+    },
+    {
+      "id": 18,
+      "query": "残疾人证怎么办理",
+      "intent": "service",
+      "expected_chunks": ["SVC-018"],
+      "validation": "回答包含条件/流程/材料",
+      "category": "核心问答",
+      "priority": "P1"
+    },
+    {
+      "id": 19,
+      "query": "户口迁移需要什么材料",
+      "intent": "service",
+      "expected_chunks": ["SVC-003"],
+      "validation": "回答包含材料清单",
+      "category": "核心问答",
+      "priority": "P1"
+    },
+    {
+      "id": 20,
+      "query": "食品经营许可证办理",
+      "intent": "service",
+      "expected_chunks": ["SVC-020"],
+      "validation": "回答包含办理流程",
+      "category": "核心问答",
+      "priority": "P2"
+    }
+  ],
+  "summary": {
+    "total": 20,
+    "by_priority": {"P0": 7, "P1": 12, "P2": 1},
+    "by_category": {
+      "核心问答": 9,
+      "别名映射": 3,
+      "追问": 1,
+      "追问改写": 2,
+      "意图保护": 1,
+      "公文写作": 1,
+      "空映射引导": 1,
+      "基础对话": 1,
+      "拒答边界": 1
+    }
+  }
+}
