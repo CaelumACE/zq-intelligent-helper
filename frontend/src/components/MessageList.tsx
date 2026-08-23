@@ -126,6 +126,10 @@ export default function MessageList({ messages, isLoading, isStreaming = false, 
     return null
   })()
 
+  // 只在「最新一条 AI 已产出首字但尚未结束」时，给最新气泡转发圈；
+  // 已完成的旧气泡不再保持旋转，避免出现几条 AI 回复同时转圈。
+  const streamingLatestId = isStreaming && !isLoading && latestAiId != null ? latestAiId : null
+
   return (
     <div className="chat-inner">
       {messages.map((msg) => (
@@ -133,7 +137,7 @@ export default function MessageList({ messages, isLoading, isStreaming = false, 
           key={msg.id}
           message={msg}
           isLatest={!active && msg.id === latestAiId}
-          streaming={isStreaming && msg.role === 'assistant' && msg.id === latestAiId}
+          streaming={msg.id === streamingLatestId}
           onRegenerate={onRegenerate}
           onFollowUp={onFollowUp}
           allMessages={messages}
