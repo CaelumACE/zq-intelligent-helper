@@ -17,7 +17,7 @@ function App() {
   const [isLoading, setIsLoading] = useState(false)
   const [currentView, setCurrentView] = useState<'chat' | 'home'>('home')
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [model, setModel] = useState<ModelProvider>('minimax')
+  const [model, setModel] = useState<ModelProvider>('deepseek')
   const [writingOpen, setWritingOpen] = useState(false)
 
   const activeRequestRef = useRef<AbortController | null>(null)

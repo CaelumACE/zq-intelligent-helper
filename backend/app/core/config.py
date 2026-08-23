@@ -9,8 +9,8 @@ load_dotenv(Path(__file__).resolve().parent.parent.parent.parent / '.env')
 class Settings:
     """应用配置"""
     # LLM 配置
-    LLM_PROVIDER = os.getenv('LLM_PROVIDER', 'minimax')
-    LLM_FALLBACK_PROVIDER = os.getenv('LLM_FALLBACK_PROVIDER', 'deepseek')
+    LLM_PROVIDER = os.getenv('LLM_PROVIDER', 'deepseek')
+    LLM_FALLBACK_PROVIDER = os.getenv('LLM_FALLBACK_PROVIDER', 'minimax')
     
     # MiniMax 配置
     MINIMAX_API_KEY = os.getenv('MINIMAX_API_KEY', '')
