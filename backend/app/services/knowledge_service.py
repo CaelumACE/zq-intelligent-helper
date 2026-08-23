@@ -69,6 +69,7 @@ class KnowledgeService:
         self._pg_synced = False
         self.alias_entries = []
         self.alias_index = {}
+        self.follow_up_patterns = []
         self._load_data()
         self._load_aliases()
 
@@ -76,6 +77,7 @@ class KnowledgeService:
         """加载外置别名映射表，供检索前扩展与定向加权使用。"""
         self.alias_entries = []
         self.alias_index = {}
+        self.follow_up_patterns = []
         path = settings.DATA_DIR / 'aliases.json'
         if not path.exists():
             logger.warning("aliases.json 不存在，别名扩展未启用")
@@ -92,7 +94,10 @@ class KnowledgeService:
                 for term in terms:
                     if term:
                         self.alias_index[term] = entry
-            logger.info(f"别名映射加载完成: {len(self.alias_entries)} 组 / {len(self.alias_index)} 条别名")
+            for pattern in (data.get('follow_up_templates') or {}).get('patterns', []):
+                if pattern.get('match') and pattern.get('rewrite'):
+                    self.follow_up_patterns.append(pattern)
+            logger.info(f"别名映射加载完成: {len(self.alias_entries)} 组 / {len(self.alias_index)} 条别名 / {len(self.follow_up_patterns)} 条追问模板")
         except Exception as e:
             logger.warning(f"别名映射加载失败: {e}")
 
@@ -574,15 +579,45 @@ class KnowledgeService:
     def get_all_documents(self) -> Dict[str, List]:
         return self.documents
 
+    def rewrite_follow_up(self, follow_text: str, context_query: str):
+        """按追问模板把“那医保呢/多久能办下来”等省略式追问改写为完整检索词。
+
+        返回 rewrite（扩展 query）与 matched（命中的模板），未命中返回 (None, None)。
+        """
+        for pattern in self.follow_up_patterns:
+            if any(w in follow_text for w in pattern.get('match', [])):
+                rewrite = pattern.get('rewrite', '').replace('{topic}', context_query)
+                return rewrite, pattern
+        return None, None
+
     def search_follow_up(self, follow_text: str, context_query: str, top_k: int = 5) -> List[Dict[str, Any]]:
-        """后续指令检索：优先复用上一轮主问题召回结果，避免被公文知识/模板抢走。"""
+        """后续指令检索：优先复用上一轮主问题召回；模板命中时再补一路改写检索。
+
+        双路召回取并集，这是多路召回/RRF 的轻量雏形，为 P2 铺路。
+        """
         preferred = self.search(context_query, top_k=top_k)
-        if preferred:
+        rewrite, pattern = self.rewrite_follow_up(follow_text, context_query)
+        if not preferred:
+            return self.search(rewrite, top_k=top_k) if rewrite else self.search(follow_text, top_k=top_k)
+
+        merged_seen = {r['id'] for r in preferred}
+        if not rewrite:
             return preferred
-        return self.search(follow_text, top_k=top_k)
+        # 仅当改写能带来新候选时才融合；改写检索失败则保持原召回，不回归
+        extra = self.search(rewrite, top_k=max(3, top_k))
+        if not extra:
+            return preferred
+        for candidate in extra:
+            if candidate['id'] not in merged_seen:
+                preferred.append(candidate)
+        preferred.sort(key=lambda x: x.get('score', 0.0), reverse=True)
+        return preferred[:top_k]
 
     def build_context(self, query: str, top_k: int = 5) -> str:
         results = self.search(query, top_k)
+        return self.build_context_from_results(results)
+
+    def build_context_from_results(self, results: List[Dict[str, Any]]) -> str:
         if not results:
             return ""
         context_parts = []

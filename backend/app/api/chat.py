@@ -233,7 +233,12 @@ async def chat(request: ChatRequest):
         retrieval_start = time.time()
         alias_extra, alias_hit = knowledge_service.resolve_alias(context_query)
         intent = 'follow_up' if is_follow_up else knowledge_service.classify_intent(request.message)
-        search_results = knowledge_service.search_follow_up(request.message, context_query, top_k=5) if is_follow_up else knowledge_service.search(context_query, top_k=5)
+        if is_follow_up:
+            search_results = knowledge_service.search_follow_up(request.message, context_query, top_k=5)
+            context = knowledge_service.build_context_from_results(search_results)
+        else:
+            search_results = knowledge_service.search(context_query, top_k=5)
+            context = None
         retrieval_time = (time.time() - retrieval_start) * 1000
         log_retrieval(_build_jsonl_record(
             session_id, request.message, alias_extra, intent, alias_hit,
@@ -250,7 +255,8 @@ async def chat(request: ChatRequest):
             references = []
             logger.info(f"拒答（无知识库命中）: {request.message[:40]}")
         else:
-            context = knowledge_service.build_context(context_query, top_k=5)
+            if context is None:
+                context = knowledge_service.build_context(context_query, top_k=5)
             references = knowledge_service.get_references(search_results)
             messages = _build_messages(request, session_id, intent, context)
 
@@ -322,7 +328,7 @@ async def chat_stream(request: ChatRequest):
         search_results, retrieval_time,
     ))
     references = knowledge_service.get_references(search_results)
-    context = knowledge_service.build_context(context_query, top_k=5) if search_results else ""
+    context = knowledge_service.build_context_from_results(search_results) if search_results else ""
 
     # 元信息一次性下发
     meta = {
