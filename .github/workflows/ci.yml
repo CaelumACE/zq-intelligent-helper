@@ -27,6 +27,8 @@ jobs:
         run: pip install -r requirements.txt
       - name: Verify backend imports and routes
         run: python -c "from app.main import app; assert app is not None"
+      - name: PyCompile all backend files
+        run: python -m compileall -q .
 
   frontend-check:
     runs-on: ubuntu-latest
