@@ -231,15 +231,17 @@ class KnowledgeService:
     def _absolute_threshold(self, query_lower: str, top_score: float) -> float:
         """绝对分数门槛，避免问候语/闲聊词借同源公文词高频召回。
 
-        真实政策/服务问题通常 top_score 在 150 以上；写作类用文档名命中的
-        分数约 130 是有效召回，不能误杀。因此：
-        - top_score >= 150：按 0.75 压缩后仍可达 112+，宽松保留。
-        - top_score 120~150：写作意图放宽到 80，否则退回 135。
+        政策/服务问题 top_score 通常在 150+；
+        公文知识类（GOV）问题语义匹配分较低（20~30），但属于明确知识问答，不能误杀；
+        写作意图放宽门槛。
         """
         if top_score >= 150.0:
             return min(120.0, top_score * 0.70)
+        # 公文知识类问题（如"公文类型有哪些"）分数天然较低，放宽门槛
+        if any(kw in query_lower for kw in ("公文", "文种", "文书", "行文", "格式规范")):
+            return 5.0
         if top_score < 120.0:
-            # 低置信短文本/闲聊不召回，避免“你好”等命中同源文档。
+            # 低置信短文本/闲聊不召回，避免"你好"等命中同源文档
             return top_score + 1.0
         if self.is_writing_intent(query_lower):
             return 95.0
