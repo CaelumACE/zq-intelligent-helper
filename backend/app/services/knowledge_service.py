@@ -67,7 +67,74 @@ class KnowledgeService:
         self._corpus_embeddings = []
         self._corpus_ready = False
         self._pg_synced = False
+        self.alias_entries = []
+        self.alias_index = {}
         self._load_data()
+        self._load_aliases()
+
+    def _load_aliases(self):
+        """加载外置别名映射表，供检索前扩展与定向加权使用。"""
+        self.alias_entries = []
+        self.alias_index = {}
+        path = settings.DATA_DIR / 'aliases.json'
+        if not path.exists():
+            logger.warning("aliases.json 不存在，别名扩展未启用")
+            return
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            for entry in data.get('aliases', []):
+                self.alias_entries.append(entry)
+                for alias in entry.get('aliases', []) or []:
+                    if alias:
+                        self.alias_index[alias] = entry
+            logger.info(f"别名映射加载完成: {len(self.alias_entries)} 组 / {len(self.alias_index)} 条别名")
+        except Exception as e:
+            logger.warning(f"别名映射加载失败: {e}")
+
+    def resolve_alias(self, query: str):
+        """解析查询命中的别名，返回 (扩展词, 命中信息)。
+
+        扩展词仅包含标准名称与补充同义口语，不含原查询；
+        target_ids 为空数组的条目视为“已知但未覆盖”，不强行扩展，由上游引导 12333。
+        """
+        if not self.alias_index:
+            return '', None
+        matched = [(alias, entry) for alias, entry in self.alias_index.items() if alias in query]
+        if not matched:
+            return '', None
+
+        seen = set()
+        unique = []
+        for alias, entry in matched:
+            key = entry.get('canonical') or alias
+            if key not in seen:
+                seen.add(key)
+                unique.append((alias, entry))
+
+        aliases = list(dict.fromkeys(a for a, _ in matched))
+        canonicals = []
+        target_ids = []
+        for _, entry in unique:
+            canonical = entry.get('canonical', '')
+            if canonical:
+                canonicals.append(canonical)
+            target_ids.extend(entry.get('target_ids', []) or [])
+        target_ids = list(dict.fromkeys(target_ids))
+        uncovered = all((entry.get('target_ids') or []) == [] for _, entry in unique)
+
+        extra = ''
+        if not uncovered:
+            extra_terms = list(dict.fromkeys(canonicals + [a for a in aliases if a not in canonicals]))
+            extra = ' '.join(extra_terms)
+
+        alias_hit = {
+            'aliases': aliases,
+            'canonical': canonicals,
+            'target_ids': target_ids,
+            'uncovered': uncovered,
+        }
+        return extra, alias_hit
 
     def _load_data(self):
         """加载知识库数据"""
@@ -196,7 +263,13 @@ class KnowledgeService:
         query_lower = query.lower()
         if self._is_greeting(query_lower):
             return []
+        alias_extra, alias_hit = self.resolve_alias(query_lower)
+        # 已知但知识库未覆盖的事项：不生成候选，交由上游引导，避免用通用信息胡编
+        if alias_hit and alias_hit.get('uncovered'):
+            return []
         expanded_query = self._expand_query(query_lower)
+        if alias_extra:
+            expanded_query = (expanded_query + ' ' + alias_extra).strip()
         category = self._detect_category(query_lower)
 
         writing_intent = self.is_writing_intent(query_lower)
@@ -214,6 +287,8 @@ class KnowledgeService:
             # 非写作意图下，公文模板词频高容易抢占政策问答，予以降权
             if not writing_intent and chunk.get('type') == 'template':
                 score -= 4.0
+            if alias_hit and chunk['id'] in alias_hit.get('target_ids', []):
+                score += 10.0
             score += self._title_bonus(query_lower, chunk['title'])
             if score > 0:
                 results.append({

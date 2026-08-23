@@ -1,6 +1,7 @@
 """对话 API"""
 import json
 import time
+from datetime import datetime
 from typing import List
 
 from fastapi import APIRouter, HTTPException
@@ -10,6 +11,7 @@ from app.models import ChatRequest, ChatResponse, Reference, ChatMessage
 from app.services.knowledge_service import knowledge_service
 from app.services.llm_service import LLMService
 from app.services.session_store import session_store
+from app.services.retrieval_log import log_retrieval
 from app.core.config import settings
 from app.core.logger import logger
 
@@ -100,6 +102,17 @@ OUT_OF_SCOPE_RESPONSE = (
 )
 
 
+def _uncovered_response(topic: str) -> str:
+    topic = (topic or "").strip() or "该事项"
+    return (
+        f"您咨询的「{topic}」已识别为政务服务事项，但当前知识库暂未收录详细办理信息。\n\n"
+        "为避免给您错误信息，建议通过官方渠道确认：\n"
+        "- 人社/社保业务：拨打 12333\n"
+        "- 政府综合服务：拨打 12345\n\n"
+        "如果您想了解其他具体政策或办事流程，也可以换一种问法告诉我。"
+    )
+
+
 def _resolve_session_id(request: ChatRequest) -> str:
     session_id = request.session_id
     if not session_id:
@@ -128,6 +141,30 @@ def _previous_user_query(request: ChatRequest, session_id: str) -> str:
         if role == 'user' and content and content.strip() != request.message.strip():
             return content
     return request.message
+
+
+def _build_jsonl_record(session_id: str, raw_query: str, expanded_query: str, intent: str, alias_hit, top_chunks: List[dict], latency_ms: float) -> dict:
+    """构造结构化检索日志，仅含检索侧信息。"""
+    alias = None
+    if alias_hit:
+        alias = {
+            "aliases": alias_hit.get("aliases"),
+            "canonical": alias_hit.get("canonical"),
+            "uncovered": bool(alias_hit.get("uncovered")),
+        }
+    return {
+        "timestamp": datetime.now().isoformat(timespec="milliseconds"),
+        "session_id": session_id,
+        "raw_query": raw_query,
+        "expanded_query": expanded_query,
+        "intent": intent,
+        "alias_hit": alias,
+        "top_chunks": [
+            {"id": c.get("id"), "score": round(float(c.get("score") or 0.0), 6)}
+            for c in (top_chunks or [])
+        ],
+        "latency_ms": round(float(latency_ms), 2),
+    }
 
 
 def _build_messages(request: ChatRequest, session_id: str, intent: str, context: str):
@@ -184,13 +221,21 @@ async def chat(request: ChatRequest):
 
         # 1. 知识库检索 + 意图识别
         retrieval_start = time.time()
+        alias_extra, alias_hit = knowledge_service.resolve_alias(context_query)
         intent = 'follow_up' if is_follow_up else knowledge_service.classify_intent(request.message)
         search_results = knowledge_service.search_follow_up(request.message, context_query, top_k=5) if is_follow_up else knowledge_service.search(context_query, top_k=5)
         retrieval_time = (time.time() - retrieval_start) * 1000
+        log_retrieval(_build_jsonl_record(
+            session_id, request.message, alias_extra, intent, alias_hit,
+            search_results, retrieval_time,
+        ))
 
         # 2. 无命中拒答
         if not search_results:
-            content = OUT_OF_SCOPE_RESPONSE
+            if alias_hit and alias_hit.get('uncovered'):
+                content = _uncovered_response(context_query or request.message)
+            else:
+                content = OUT_OF_SCOPE_RESPONSE
             generation_time = 0.0
             references = []
             logger.info(f"拒答（无知识库命中）: {request.message[:40]}")
@@ -247,6 +292,8 @@ async def chat_stream(request: ChatRequest):
     is_greeting = _is_greeting(request.message)
     is_follow_up = bool(getattr(request, 'follow_up', False)) or knowledge_service.is_follow_up_intent(request.message)
     intent = 'follow_up' if is_follow_up else knowledge_service.classify_intent(request.message)
+    retrieval_start = time.time()
+    alias_extra, alias_hit = '', None
     if is_follow_up:
         context_query = _previous_user_query(request, session_id)
         search_results = knowledge_service.search_follow_up(request.message, context_query, top_k=5)
@@ -255,7 +302,15 @@ async def chat_stream(request: ChatRequest):
         search_results = []
     else:
         context_query = request.message
+        alias_extra, alias_hit = knowledge_service.resolve_alias(request.message)
         search_results = knowledge_service.search(request.message, top_k=5)
+    if not alias_extra:
+        alias_extra, alias_hit = knowledge_service.resolve_alias(context_query)
+    retrieval_time = (time.time() - retrieval_start) * 1000
+    log_retrieval(_build_jsonl_record(
+        session_id, request.message, alias_extra, intent, alias_hit,
+        search_results, retrieval_time,
+    ))
     references = knowledge_service.get_references(search_results)
     context = knowledge_service.build_context(context_query, top_k=5) if search_results else ""
 
@@ -281,11 +336,12 @@ async def chat_stream(request: ChatRequest):
             return
 
         if not search_results:
-            yield f"data: {json.dumps({'type': 'error', 'message': OUT_OF_SCOPE_RESPONSE}, ensure_ascii=False)}\n\n"
+            refuse_text = _uncovered_response(context_query or request.message) if (alias_hit and alias_hit.get('uncovered')) else OUT_OF_SCOPE_RESPONSE
+            yield f"data: {json.dumps({'type': 'error', 'message': refuse_text}, ensure_ascii=False)}\n\n"
             yield f"data: {json.dumps({'type': 'done', 'session_id': session_id, 'references': []}, ensure_ascii=False)}\n\n"
             yield "data: [DONE]\n\n"
             user_msg = {"role": "user", "content": request.message, "timestamp": int(time.time() * 1000)}
-            assistant_msg = {"role": "assistant", "content": OUT_OF_SCOPE_RESPONSE, "references": [], "timestamp": int(time.time() * 1000)}
+            assistant_msg = {"role": "assistant", "content": refuse_text, "references": [], "timestamp": int(time.time() * 1000)}
             session_store.add_messages(session_id, [user_msg, assistant_msg])
             return
 
