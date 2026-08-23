@@ -114,20 +114,36 @@ class KnowledgeService:
             logger.warning(f"别名映射加载失败: {e}")
 
     def match_dialogue(self, text: str):
-        """匹配对话场景固定话术，返回 (intent, response)。未命中返回 (None, None)。"""
+        """匹配对话场景固定话术，返回 (intent, response)。未命中返回 (None, None)。
+
+        优先级：self_intro → capability → farewell → thanks → acknowledge → greeting。
+        - farewell/thanks/self_intro/capability 使用包含匹配，覆盖“我走了/拜拜了您”等口语变体
+        - acknowledge/greeting 使用整句归一化等于匹配，避免“好的，公积金怎么办”被误判结束语
+        """
         if not self.dialogue_scenarios:
             return None, None
-        t = (text or '').strip().lower().rstrip("!！?？。.~～") 
+        t = (text or '').strip().lower().rstrip("!！?？。.~～")
         if not t:
             return None, None
-        # 先匹配非 greeting 场景，再匹配 greeting，避免“你好”这类泛词覆盖具体身份询问
-        for first in (False, True):
-            for scenario in self.dialogue_scenarios:
-                if (scenario['intent'] == 'greeting') != first:
+        t_norm = re.sub(r"[~～!！?？。.,，、\s]+$", "", t)
+        t_bare = re.sub(r"[啊呀哦嘛呢吧哟诶唉啦哈]+$", "", t_norm)
+
+        scenarios = {sc['intent']: sc for sc in self.dialogue_scenarios if sc.get('intent')}
+        priority = ('self_intro', 'capability', 'farewell', 'thanks', 'acknowledge', 'greeting')
+        for intent in priority:
+            scenario = scenarios.get(intent)
+            if not scenario:
+                continue
+            for kw in scenario.get('keywords', []):
+                kw = str(kw).strip().lower()
+                if not kw:
                     continue
-                for kw in scenario['keywords']:
-                    if kw in t:
-                        return scenario['intent'], scenario['response']
+                if intent in ('acknowledge', 'greeting'):
+                    if t_bare == kw:
+                        return intent, scenario.get('response', '')
+                else:
+                    if kw in t_norm:
+                        return intent, scenario.get('response', '')
         return None, None
 
     def resolve_alias(self, query: str):
