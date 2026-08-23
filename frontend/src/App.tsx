@@ -5,7 +5,7 @@ import ChatInput from './components/ChatInput'
 import MessageList from './components/MessageList'
 import WelcomeScreen from './components/WelcomeScreen'
 import WritingPanel from './components/WritingPanel'
-import type { Message, Conversation, Reference, ModelProvider } from './types'
+import type { Message, Conversation, Reference, ModelProvider, WritingRequest } from './types'
 import './App.css'
 
 const API_BASE = __API_BASE__
@@ -84,7 +84,7 @@ function App() {
     })
   }
 
-  const handleSendMessage = async (content: string) => {
+  const handleSendMessage = async (content: string, writing?: WritingRequest) => {
     const userMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
@@ -126,6 +126,11 @@ function App() {
           session_id: sessionId || undefined,
           history,
           provider: model,
+          doc_type: writing?.docType,
+          title: writing?.title,
+          to: writing?.to,
+          body: writing?.body,
+          sign: writing?.sign,
         }),
       })
 
@@ -321,9 +326,9 @@ function App() {
           open={writingOpen}
           model={model}
           onClose={() => setWritingOpen(false)}
-          onGenerate={(prompt) => {
+          onGenerate={(prompt, _model, writing) => {
             setWritingOpen(false)
-            handleSendMessage(prompt)
+            handleSendMessage(prompt, writing)
           }}
         />
       </div>

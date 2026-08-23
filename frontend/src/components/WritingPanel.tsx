@@ -1,10 +1,10 @@
 import { useState } from 'react'
-import type { ModelProvider } from '../types'
+import type { ModelProvider, WritingRequest } from '../types'
 
 interface WritingPanelProps {
   open: boolean
   onClose: () => void
-  onGenerate: (prompt: string, model: ModelProvider) => void
+  onGenerate: (prompt: string, model: ModelProvider, writing: WritingRequest) => void
   model: ModelProvider
 }
 
@@ -20,10 +20,11 @@ export default function WritingPanel({ open, onClose, onGenerate, model }: Writi
 
   const handleGenerate = () => {
     if (!title.trim() || !body.trim() || generating) return
-    const prompt = `请帮我撰写一份${docType}。标题：${title}；主送单位：${to || '未指定'}；正文要点：${body}；落款：${sign || '未指定'}。请严格按照公文格式生成。`
+    const prompt = `请帮我撰写一份${docType}。标题：${title || '未指定'}；正文要点：${body}`
+    const writing: WritingRequest = { docType, title, to, body, sign }
     setGenerating(true)
     window.setTimeout(() => setGenerating(false), 2500)
-    onGenerate(prompt, model)
+    onGenerate(prompt, model, writing)
   }
 
   return (

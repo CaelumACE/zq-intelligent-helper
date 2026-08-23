@@ -21,6 +21,14 @@ export interface Conversation {
   updatedAt: number;
 }
 
+export interface WritingRequest {
+  docType: string;
+  title: string;
+  to: string;
+  body: string;
+  sign: string;
+}
+
 export interface QuickActionItem {
   id: string;
   icon: string;

@@ -33,6 +33,26 @@ SYSTEM_PROMPT = """你是政企智能助手，为政府机关和企事业单位�
 WRITING_PROMPT_EXTRA = """
 当前用户需要撰写公文。请严格依据参考资料中的公文格式与写作规范生成，结构完整、用语规范。
 如参考资料不足以完成该文种，请说明需要用户补充的信息，不要臆造格式。"""
+def _build_writing_message(request: ChatRequest) -> str:
+    """把公文写作面板结构化参数还原为完整写作指令。"""
+    doc_type = (request.doc_type or "").strip() or "通知"
+    title = (request.title or "").strip()
+    body = (request.body or "").strip()
+    to = (request.to or "").strip()
+    sign = (request.sign or "").strip()
+
+    parts = [f"请帮我撰写一份{doc_type}。"]
+    if title:
+        parts.append(f"标题：{title}")
+    if to:
+        parts.append(f"主送单位：{to}")
+    if body:
+        parts.append(f"正文要点：{body}")
+    if sign:
+        parts.append(f"落款单位/日期：{sign}")
+    parts.append("请严格按照公文格式生成，结构完整、用语规范。")
+    return "；".join(parts)
+
 
 QA_PROMPT_EXTRA = """
 当前用户正在进行知识问答。请先准确理解问题，再仅依据参考资料作答。
@@ -64,6 +84,7 @@ def _resolve_session_id(request: ChatRequest) -> str:
 
 def _build_messages(request: ChatRequest, session_id: str, intent: str, context: str):
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    user_query = _build_writing_message(request) if intent == "writing" else request.message
     if intent == "writing":
         messages.append({"role": "system", "content": WRITING_PROMPT_EXTRA})
     elif intent == "service":
@@ -84,7 +105,7 @@ def _build_messages(request: ChatRequest, session_id: str, intent: str, context:
         if isinstance(msg, dict):
             messages.append({"role": msg.get("role", "user"), "content": msg.get("content", "")})
 
-    messages.append({"role": "user", "content": request.message})
+    messages.append({"role": "user", "content": user_query})
     return messages
 
 

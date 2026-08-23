@@ -32,6 +32,11 @@ class ChatRequest(BaseModel):
     session_id: Optional[str] = None
     history: List[ChatMessage] = Field(default_factory=list)
     provider: Optional[str] = None
+    doc_type: Optional[str] = None
+    title: Optional[str] = None
+    to: Optional[str] = None
+    body: Optional[str] = None
+    sign: Optional[str] = None
 
 
 class ChatResponse(BaseModel):
