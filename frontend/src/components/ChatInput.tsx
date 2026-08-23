@@ -1,4 +1,4 @@
-import { useState, type KeyboardEvent } from 'react'
+import { useEffect, useState, useRef, type KeyboardEvent } from 'react'
 import type { ModelProvider } from '../types'
 
 interface ChatInputProps {
@@ -15,12 +15,24 @@ const MODEL_LABEL: Record<ModelProvider, string> = {
 
 export default function ChatInput({ onSend, onStop, disabled = false, model }: ChatInputProps) {
   const [value, setValue] = useState('')
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+  const prevDisabledRef = useRef(disabled)
+
+  useEffect(() => {
+    // 流式/加载结束后（disabled 从 true 变回 false）自动把光标送回输入框
+    if (!disabled && prevDisabledRef.current) {
+      inputRef.current?.focus()
+    }
+    prevDisabledRef.current = disabled
+  }, [disabled])
 
   const handleSend = () => {
     const content = value.trim()
     if (!content || disabled) return
     onSend(content)
     setValue('')
+    // 发送后立即把光标放回输入框；若流式期间被 disabled，待完成后再恢复
+    window.setTimeout(() => inputRef.current?.focus(), 0)
   }
 
   const handlePrimary = () => {
@@ -46,6 +58,8 @@ export default function ChatInput({ onSend, onStop, disabled = false, model }: C
       </div>
       <div className="input-row">
         <textarea
+          ref={inputRef}
+          autoFocus
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={handleKeyDown}
