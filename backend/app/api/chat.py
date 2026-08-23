@@ -62,6 +62,25 @@ SERVICE_PROMPT_EXTRA = """
 当前用户需要办事指引。请依据参考资料，清晰列出办理条件、所需材料、办理步骤、地点与时限。
 如资料未覆盖某项，请明确说明，不要臆造。"""
 
+
+GREETING_PATTERNS = {"你好", "您好", "hi", "hello", "嗨", "早上好", "下午好", "晚上好", "在吗", "在不在", "哈喽"}
+
+def _is_greeting(text: str) -> bool:
+    t = text.strip().lower().rstrip("!！?？。.~～")
+    if t in GREETING_PATTERNS:
+        return True
+    if len(t) <= 6 and any(g in t for g in ("你好", "您好", "hello", "hi ", "嗨")):
+        return True
+    return False
+
+GREETING_RESPONSE = (
+    "您好！我是政企智能助手，可以为您提供以下服务：\n\n"
+    "📋 **政策咨询** — 社保、公积金、税收、外商投资、数字化转型等政策解读\n"
+    "📝 **公文写作** — 通知、报告、纪要、请示、函等公文一键生成\n"
+    "🏢 **办事指引** — 营业执照、社保登记、公积金贷款等办事流程\n\n"
+    "请问您想了解什么？"
+)
+
 OUT_OF_SCOPE_RESPONSE = (
     "抱歉，这个问题超出了政企智能助手的服务范围。\n\n"
     "我可以为您提供以下服务：\n"
@@ -116,6 +135,18 @@ async def chat(request: ChatRequest):
 
     try:
         session_id = _resolve_session_id(request)
+
+        # 0. 问候语直接回复
+        if _is_greeting(request.message):
+            content = GREETING_RESPONSE
+            retrieval_time = 0.0
+            generation_time = 0.0
+            references = []
+            session_id = _resolve_session_id(request)
+            user_msg = {"role": "user", "content": request.message, "timestamp": int(time.time() * 1000)}
+            assistant_msg = {"role": "assistant", "content": content, "references": references, "timestamp": int(time.time() * 1000)}
+            session_store.add_messages(session_id, [user_msg, assistant_msg])
+            return ChatResponse(session_id=session_id, content=content, references=[], retrieval_time_ms=0, generation_time_ms=0)
 
         # 1. 知识库检索 + 意图识别
         retrieval_start = time.time()
@@ -179,15 +210,16 @@ async def chat(request: ChatRequest):
 async def chat_stream(request: ChatRequest):
     """流式对话接口（SSE）：首 token 快速回显，降低体感等待"""
     session_id = _resolve_session_id(request)
+    is_greeting = _is_greeting(request.message)
     intent = knowledge_service.classify_intent(request.message)
-    search_results = knowledge_service.search(request.message, top_k=5)
+    search_results = [] if is_greeting else knowledge_service.search(request.message, top_k=5)
     references = knowledge_service.get_references(search_results)
-    context = knowledge_service.build_context(request.message, top_k=5)
+    context = knowledge_service.build_context(request.message, top_k=5) if search_results else ""
 
     # 元信息一次性下发
     meta = {
         "session_id": session_id,
-        "intent": intent,
+        "intent": "greeting" if is_greeting else intent,
         "references": references,
         "hit_count": len(search_results),
     }
@@ -195,6 +227,15 @@ async def chat_stream(request: ChatRequest):
     async def event_stream():
         # 先发元信息和开始事件，前端可立即显示会话ID与引用数
         yield f"data: {json.dumps({'type': 'meta', **meta}, ensure_ascii=False)}\n\n"
+
+        if is_greeting:
+            user_msg = {"role": "user", "content": request.message, "timestamp": int(time.time() * 1000)}
+            assistant_msg = {"role": "assistant", "content": GREETING_RESPONSE, "references": [], "timestamp": int(time.time() * 1000)}
+            session_store.add_messages(session_id, [user_msg, assistant_msg])
+            yield f"data: {json.dumps({'type': 'delta', 'content': GREETING_RESPONSE}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'type': 'done', 'session_id': session_id, 'references': []}, ensure_ascii=False)}\n\n"
+            yield "data: [DONE]\n\n"
+            return
 
         if not search_results:
             yield f"data: {json.dumps({'type': 'error', 'message': OUT_OF_SCOPE_RESPONSE}, ensure_ascii=False)}\n\n"

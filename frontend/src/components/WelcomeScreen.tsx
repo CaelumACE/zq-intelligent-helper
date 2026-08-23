@@ -2,6 +2,7 @@ import { quickActions } from '../utils/mockData'
 
 interface WelcomeScreenProps {
   onQuickAction: (prompt: string) => void
+  disabled?: boolean
 }
 
 const CAPABILITIES = [
@@ -10,7 +11,7 @@ const CAPABILITIES = [
   { dot: 'guide', text: '流程导引', suffix: ' · 材料地点一次说清' },
 ]
 
-export default function WelcomeScreen({ onQuickAction }: WelcomeScreenProps) {
+export default function WelcomeScreen({ onQuickAction, disabled = false }: WelcomeScreenProps) {
   return (
     <div className="chat-inner">
       <div className="welcome-empty">
@@ -36,7 +37,7 @@ export default function WelcomeScreen({ onQuickAction }: WelcomeScreenProps) {
 
         <div className="suggest-grid">
           {quickActions.map((action) => (
-            <button key={action.id} onClick={() => onQuickAction(action.prompt)} className="suggest-card">
+            <button key={action.id} onClick={() => !disabled && onQuickAction(action.prompt)} disabled={disabled} className="suggest-card">
               <div className="suggest-ic">{action.icon}</div>
               <div className="suggest-q">{action.label}</div>
               <span className="suggest-tag">{action.tag}</span>

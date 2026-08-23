@@ -141,7 +141,7 @@ class SessionStore:
                 {
                     "id": session_id,
                     "title": session.get("title") or "新对话",
-                    "payload": json.dumps(session, ensure_ascii=False),
+                    "payload": session,
                     "created_at": session.get("createdAt", 0),
                     "updated_at": session.get("updatedAt", 0),
                 },
@@ -155,11 +155,14 @@ class SessionStore:
             ).mappings().first()
         if not row:
             return None
-        try:
-            return json.loads(row["payload"])
-        except Exception:
-            logger.warning(f"会话 payload 解析失败: {session_id}")
-            return None
+        payload = row["payload"]
+        if isinstance(payload, str):
+            try:
+                return json.loads(payload)
+            except Exception:
+                logger.warning(f"会话 payload 解析失败: {session_id}")
+                return None
+        return payload
 
     def _sql_get_history(self, session_id: str, limit: int = 10) -> list:
         session = self._sql_get(session_id)
@@ -187,10 +190,14 @@ class SessionStore:
             ).mappings().all()
         sessions: list = []
         for row in rows:
-            try:
-                sessions.append(json.loads(row["payload"]))
-            except Exception:
-                continue
+            payload = row["payload"]
+            if isinstance(payload, str):
+                try:
+                    sessions.append(json.loads(payload))
+                except Exception:
+                    continue
+            else:
+                sessions.append(payload)
         return sessions
 
     def _sql_delete(self, session_id: str) -> bool:

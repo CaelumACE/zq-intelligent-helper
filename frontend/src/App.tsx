@@ -85,6 +85,7 @@ function App() {
   }
 
   const handleSendMessage = async (content: string, writing?: WritingRequest) => {
+    if (isLoading) return
     const userMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
@@ -170,6 +171,9 @@ function App() {
                 setCurrentSessionId(evt.session_id)
               }
               if (evt.references) references = evt.references
+            } else if (evt.type === 'done') {
+              // Reload conversation list to show the new session in sidebar
+              loadConversations()
             } else if (evt.type === 'delta' && evt.content) {
               if (!started) {
                 started = true
@@ -310,7 +314,7 @@ function App() {
 
         <div className={`chat-stream ${currentView === 'home' && messages.length === 0 ? 'home' : ''}`}>
           {currentView === 'home' && messages.length === 0 ? (
-            <WelcomeScreen onQuickAction={handleSendMessage} />
+            <WelcomeScreen onQuickAction={handleSendMessage} disabled={isLoading} />
           ) : (
             <MessageList
               messages={messages}
