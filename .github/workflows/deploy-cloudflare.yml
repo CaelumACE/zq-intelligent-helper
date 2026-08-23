@@ -12,7 +12,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  VITE_API_BASE: https://among-ira-audio-that.trycloudflare.com
+  VITE_API_BASE: https://among-ira-audio-that.trycloudflare.com/api
 
 jobs:
   deploy:
