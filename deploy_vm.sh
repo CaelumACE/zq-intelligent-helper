@@ -6,7 +6,7 @@
 # ============================================================
 set -e
 
-PROJECT_DIR="$HOME/gov-assistant"
+PROJECT_DIR="${GOV_PROJECT_DIR:-/opt/gov-assistant}"
 REPO_URL="https://github.com/CaelumACE/zq-intelligent-helper.git"
 GIT_BRANCH="${1:-dev}"
 
