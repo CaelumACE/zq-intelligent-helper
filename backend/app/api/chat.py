@@ -129,7 +129,11 @@ def _resolve_session_id(request: ChatRequest) -> str:
         return session_id
     # 客户端已提供 sid 但服务端还未建会话：以客户端 sid 落库，
     # 否则后续带同一 sid 的追问会查不到历史，导致追问被当成独立问题。
-    return session_store.create(session_id=session_id)["id"]
+    try:
+        return session_store.create(session_id=session_id)["id"]
+    except ValueError:
+        # 极小概率并发创建同 sid，直接复用既有会话即可
+        return session_id
 
 
 def _history_messages(request: ChatRequest, session_id: str) -> List[dict]:
