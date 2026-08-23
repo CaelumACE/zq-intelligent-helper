@@ -78,6 +78,8 @@ class KnowledgeService:
         self.alias_entries = []
         self.alias_index = {}
         self.follow_up_patterns = []
+        self.dialogue_scenarios = []
+        self.refusal_template = {}
         path = settings.DATA_DIR / 'aliases.json'
         if not path.exists():
             logger.warning("aliases.json 不存在，别名扩展未启用")
@@ -97,9 +99,36 @@ class KnowledgeService:
             for pattern in (data.get('follow_up_templates') or {}).get('patterns', []):
                 if pattern.get('match') and pattern.get('rewrite'):
                     self.follow_up_patterns.append(pattern)
-            logger.info(f"别名映射加载完成: {len(self.alias_entries)} 组 / {len(self.alias_index)} 条别名 / {len(self.follow_up_patterns)} 条追问模板")
+            # 对话场景固定话术：按配置顺序匹配，先 self_intro/capability 再 greeting
+            for scenario in (data.get('dialogue_templates') or {}).get('scenarios', []):
+                keywords = [str(k).strip().lower() for k in (scenario.get('keywords') or []) if str(k).strip()]
+                if scenario.get('intent') and keywords:
+                    self.dialogue_scenarios.append({
+                        'intent': scenario['intent'],
+                        'keywords': keywords,
+                        'response': scenario.get('response', ''),
+                    })
+            self.refusal_template = data.get('dialogue_templates', {}).get('refusal_template') or {}
+            logger.info(f"别名映射加载完成: {len(self.alias_entries)} 组 / {len(self.alias_index)} 条别名 / {len(self.follow_up_patterns)} 条追问模板 / {len(self.dialogue_scenarios)} 个对话场景")
         except Exception as e:
             logger.warning(f"别名映射加载失败: {e}")
+
+    def match_dialogue(self, text: str):
+        """匹配对话场景固定话术，返回 (intent, response)。未命中返回 (None, None)。"""
+        if not self.dialogue_scenarios:
+            return None, None
+        t = (text or '').strip().lower().rstrip("!！?？。.~～") 
+        if not t:
+            return None, None
+        # 先匹配非 greeting 场景，再匹配 greeting，避免“你好”这类泛词覆盖具体身份询问
+        for first in (False, True):
+            for scenario in self.dialogue_scenarios:
+                if (scenario['intent'] == 'greeting') != first:
+                    continue
+                for kw in scenario['keywords']:
+                    if kw in t:
+                        return scenario['intent'], scenario['response']
+        return None, None
 
     def resolve_alias(self, query: str):
         """解析查询命中的别名，返回 (扩展词, 命中信息)。

@@ -110,20 +110,6 @@ def _is_greeting(text: str) -> bool:
     return False
 
 
-CLOSING_KEYWORDS = ("谢谢", "多谢", "感谢", "辛苦了", "麻烦你了", "再见", "拜拜", "没事了", "没有了", "好的", "嗯", "嗯嗯", "哦", "ok", "okay")
-
-
-def _is_closing(text: str) -> bool:
-    t_norm = _normalize_input(text)
-    if t_norm in CLOSING_KEYWORDS:
-        return True
-    # “谢谢你的解答”“感谢提醒”这类口语收尾
-    for kw in ("谢谢", "多谢", "感谢", "辛苦了", "麻烦你了", "再见", "拜拜"):
-        if t_norm.startswith(kw) and len(t_norm) <= 12:
-            return True
-    return False
-
-
 USER_INTRO_PATTERNS = re.compile(
     r"^(我叫|我姓|我的名字)|^(我是(?!说|问|想|要|来|去|查|办|申请|咨询))|^本人"
 )
@@ -134,17 +120,21 @@ def _is_user_intro(text: str) -> bool:
     return bool(t_norm) and bool(USER_INTRO_PATTERNS.search(t_norm))
 
 
-def _is_social(text: str) -> bool:
-    return _is_greeting(text) or _is_user_intro(text) or _is_closing(text)
+def _dialogue_reply(text: str):
+    """对话场景固定话术：优先读取产品配置，未配置再使用轻量兜底。
 
+    返回 (intent, response)。命中即短路，不检索、不调LLM、不出chips/引用。
+    """
+    intent, response = knowledge_service.match_dialogue(text)
+    if response:
+        return intent, response
 
-def _greeting_response(text: str) -> str:
-    # 结束话术优先，其本质也是 greeting 态，但不渲染服务介绍
-    if _is_closing(text):
-        return CLOSING_RESPONSE
-    if _is_user_intro(text):
-        return USER_INTRO_RESPONSE
-    return GREETING_RESPONSE
+    t_norm = _normalize_input(text)
+    if _is_user_intro(t_norm):
+        return 'self_intro', USER_INTRO_RESPONSE
+    if t_norm in GREETING_PATTERNS or _is_greeting(t_norm):
+        return 'greeting', GREETING_RESPONSE
+    return None, None
 
 
 GREETING_RESPONSE = (
@@ -153,12 +143,6 @@ GREETING_RESPONSE = (
     "📝 **公文写作** — 通知、报告、纪要、请示、函等公文一键生成\n"
     "🏢 **办事指引** — 营业执照、社保登记、公积金贷款等办事流程\n\n"
     "请问您想了解什么？"
-)
-
-
-CLOSING_RESPONSE = (
-    "不客气！很高兴能帮到您。\n\n"
-    "如果后续还有政策咨询、公文写作或办事流程方面的问题，随时可以问我。"
 )
 
 
@@ -296,9 +280,10 @@ async def chat(request: ChatRequest):
     try:
         session_id = _resolve_session_id(request)
 
-        # 0. 问候/身份询问/结束话术直接回复
-        if _is_social(request.message):
-            content = _greeting_response(request.message)
+        # 0. 问候/身份询问/感谢/告别等对话场景直接短路回复
+        dialogue_intent, dialogue_reply = _dialogue_reply(request.message)
+        if dialogue_reply:
+            content = dialogue_reply
             retrieval_time = 0.0
             generation_time = 0.0
             references = []
@@ -388,7 +373,8 @@ async def chat(request: ChatRequest):
 async def chat_stream(request: ChatRequest):
     """流式对话接口（SSE）：首 token 快速回显，降低体感等待"""
     session_id = _resolve_session_id(request)
-    is_greeting = _is_social(request.message)
+    dialogue_intent, dialogue_reply = _dialogue_reply(request.message)
+    is_greeting = bool(dialogue_reply)
     is_follow_up = bool(getattr(request, 'follow_up', False)) or knowledge_service.is_follow_up_intent(request.message)
     intent = 'follow_up' if is_follow_up else knowledge_service.classify_intent(request.message)
     retrieval_start = time.time()
@@ -428,11 +414,10 @@ async def chat_stream(request: ChatRequest):
         yield f"data: {json.dumps({'type': 'meta', **meta}, ensure_ascii=False)}\n\n"
 
         if is_greeting:
-            greeting_text = _greeting_response(request.message)
             user_msg = {"role": "user", "content": request.message, "timestamp": int(time.time() * 1000)}
-            assistant_msg = {"role": "assistant", "content": greeting_text, "references": [], "timestamp": int(time.time() * 1000)}
+            assistant_msg = {"role": "assistant", "content": dialogue_reply, "references": [], "timestamp": int(time.time() * 1000)}
             session_store.add_messages(session_id, [user_msg, assistant_msg])
-            yield f"data: {json.dumps({'type': 'delta', 'content': greeting_text}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'type': 'delta', 'content': dialogue_reply}, ensure_ascii=False)}\n\n"
             yield f"data: {json.dumps({'type': 'done', 'session_id': session_id, 'references': [], 'status': 'greeting'}, ensure_ascii=False)}\n\n"
             yield "data: [DONE]\n\n"
             return
