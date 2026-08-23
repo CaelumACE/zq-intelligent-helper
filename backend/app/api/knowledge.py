@@ -128,3 +128,23 @@ async def search_knowledge(query: str, top_k: int = 5):
     except Exception as e:
         logger.error(f"Search error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/reindex")
+async def reindex():
+    """强制重建语义向量索引并同步到 pgvector（首次部署或数据更新后调用）。"""
+    try:
+        knowledge_service._corpus_ready = False
+        knowledge_service._corpus_embeddings = []
+        knowledge_service._pg_synced = False
+        knowledge_service._ensure_corpus_embeddings()
+        vs = vector_store.status()
+        return {
+            "status": "ok",
+            "chunks_total": len(knowledge_service.chunks),
+            "corpus_ready": knowledge_service._corpus_ready,
+            "vector_store": vs,
+        }
+    except Exception as e:
+        logger.error(f"Reindex error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

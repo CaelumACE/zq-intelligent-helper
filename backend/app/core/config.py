@@ -4,7 +4,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 # 加载环境变量
-load_dotenv(Path(__file__).resolve().parent.parent.parent.parent / '.env')
+load_dotenv()
 
 class Settings:
     """应用配置"""
@@ -37,7 +37,7 @@ class Settings:
     RERANK_API_KEY = os.getenv('RERANK_API_KEY', '')
 
     # 数据目录
-    DATA_DIR = Path(__file__).resolve().parent.parent.parent.parent / 'data'
+    DATA_DIR = Path(os.getenv('DATA_DIR', str(Path(__file__).resolve().parent.parent.parent.parent / 'data')))
     
     @property
     def llm_config(self):
