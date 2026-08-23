@@ -30,7 +30,7 @@ services:
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
       - DEEPSEEK_MODEL=${DEEPSEEK_MODEL:-deepseek-chat}
       - DEEPSEEK_BASE_URL=${DEEPSEEK_BASE_URL:-https://api.deepseek.com/v1}
-      - DATABASE_URL=${DATABASE_URL:-postgresql+psycopg2://gov:${POSTGRES_PASSWORD:-gov123456}@postgres:5432/gov_assistant}
+      - DATABASE_URL=postgresql+psycopg2://gov:${POSTGRES_PASSWORD:-gov123456}@postgres:5432/gov_assistant
       - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-minimax}
       - EMBEDDING_MODEL=${EMBEDDING_MODEL:-embo-01}
       - EMBEDDING_DIMENSION=${EMBEDDING_DIMENSION:-1536}
