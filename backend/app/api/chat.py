@@ -567,7 +567,7 @@ async def chat_stream(request: ChatRequest):
         assistant_msg = {"role": "assistant", "content": full_text, "references": references, "timestamp": int(time.time() * 1000)}
         session_store.add_messages(session_id, [user_msg, assistant_msg])
 
-        yield f"data: {json.dumps({'type': 'done', 'session_id': session_id, 'references': references, 'follow_up_chips': follow_up_chips, 'status': 'writing' if intent == "writing" else 'ok'}, ensure_ascii=False)}\n\n"
+        yield f"data: {json.dumps({'type': 'done', 'session_id': session_id, 'references': references, 'follow_up_chips': follow_up_chips, 'status': 'writing' if intent == 'writing' else 'ok'}, ensure_ascii=False)}\n\n"
         yield "data: [DONE]\n\n"
 
     return StreamingResponse(
