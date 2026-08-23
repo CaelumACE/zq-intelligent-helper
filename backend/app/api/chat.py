@@ -323,6 +323,28 @@ def _build_jsonl_record(session_id: str, raw_query: str, expanded_query: str, in
     }
 
 
+
+SMALLTALK_SYSTEM_PROMPT = (
+    "你是政企智能助手。用户当前没有提出具体的政务问题，只是在表达提问意向或进行简短交流。\n"
+    "请用简洁、友好、专业的语气回复，自然地引导用户说出具体需求。\n"
+    "可以简要提及你能提供的服务范围（政策咨询、公文写作、办事指引）。\n"
+    "不要编造具体政策信息，不要回答寒暄和引导之外的内容。\n"
+    "回复控制在2句话以内，不要使用emoji，不要分条列举。"
+)
+
+
+def _build_smalltalk_messages(user_message: str, session_history: list = None) -> list:
+    """构建smalltalk意图的LLM消息，不检索知识库，纯大模型自然回复。"""
+    messages = [{"role": "system", "content": SMALLTALK_SYSTEM_PROMPT}]
+    # 带上最近几轮历史让LLM理解上下文
+    if session_history:
+        for msg in session_history[-4:]:
+            if isinstance(msg, dict) and msg.get("role") in ("user", "assistant"):
+                messages.append({"role": msg["role"], "content": msg.get("content", "")})
+    messages.append({"role": "user", "content": user_message})
+    return messages
+
+
 def _build_messages(request: ChatRequest, session_id: str, intent: str, context: str):
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     user_query = _build_writing_message(request) if intent == "writing" else request.message
@@ -385,10 +407,32 @@ async def chat(request: ChatRequest):
         is_follow_up = bool(getattr(request, 'follow_up', False)) or knowledge_service.is_follow_up_intent(request.message)
         context_query = _previous_user_query(request, session_id) if is_follow_up else request.message
 
-        # 1. 知识库检索 + 意图识别
+        # 1. 意图识别（smalltalk不检索知识库，直接走LLM）
+        intent = 'follow_up' if is_follow_up else knowledge_service.classify_intent(request.message)
+
+        if intent == 'smalltalk':
+            history = _history_messages(request, session_id)
+            smalltalk_msgs = _build_smalltalk_messages(request.message, history)
+            generation_start = time.time()
+            try:
+                llm_response = await llm_service.chat(smalltalk_msgs, stream=False)
+                content = _extract_content(llm_response)
+            except Exception as e:
+                logger.warning(f"smalltalk LLM失败: {e}")
+                content = "您好，请问您想咨询什么问题？我可以为您提供政策咨询、公文写作和办事指引服务。"
+            generation_time = (time.time() - generation_start) * 1000
+            references = []
+            user_msg = {"role": "user", "content": request.message, "timestamp": int(time.time() * 1000)}
+            assistant_msg = {"role": "assistant", "content": content, "references": [], "timestamp": int(time.time() * 1000)}
+            session_store.add_messages(session_id, [user_msg, assistant_msg])
+            return ChatResponse(
+                session_id=session_id, content=content, references=[],
+                retrieval_time_ms=0, generation_time_ms=generation_time,
+            )
+
+        # 2. 知识库检索
         retrieval_start = time.time()
         alias_extra, alias_hit = knowledge_service.resolve_alias(context_query)
-        intent = 'follow_up' if is_follow_up else knowledge_service.classify_intent(request.message)
         if is_follow_up:
             search_results = knowledge_service.search_follow_up(request.message, context_query, top_k=5)
             context = knowledge_service.build_context_from_results(search_results)
@@ -466,9 +510,13 @@ async def chat_stream(request: ChatRequest):
     is_greeting = bool(dialogue_reply)
     is_follow_up = bool(getattr(request, 'follow_up', False)) or knowledge_service.is_follow_up_intent(request.message)
     intent = 'follow_up' if is_follow_up else knowledge_service.classify_intent(request.message)
+    is_smalltalk = (intent == 'smalltalk')
     retrieval_start = time.time()
     alias_extra, alias_hit = '', None
-    if is_follow_up:
+    if is_smalltalk:
+        context_query = request.message
+        search_results = []
+    elif is_follow_up:
         context_query = _previous_user_query(request, session_id)
         search_results = knowledge_service.search_follow_up(request.message, context_query, top_k=5)
     elif is_greeting:
@@ -495,7 +543,7 @@ async def chat_stream(request: ChatRequest):
         "intent": "greeting" if is_greeting else ("follow_up" if is_follow_up else intent),
         "references": references,
         "hit_count": len(search_results),
-        "status": "greeting" if is_greeting else ("refusal" if not search_results else ("writing" if intent == "writing" else "ok")),
+        "status": "smalltalk" if is_smalltalk else ("greeting" if is_greeting else ("refusal" if not search_results else ("writing" if intent == "writing" else "ok"))),
     }
     follow_up_chips = _related_chips(search_results) if (search_results and references) else []
 
@@ -509,6 +557,41 @@ async def chat_stream(request: ChatRequest):
             session_store.add_messages(session_id, [user_msg, assistant_msg])
             yield f"data: {json.dumps({'type': 'delta', 'content': dialogue_reply}, ensure_ascii=False)}\n\n"
             yield f"data: {json.dumps({'type': 'done', 'session_id': session_id, 'references': [], 'status': 'greeting'}, ensure_ascii=False)}\n\n"
+            yield "data: [DONE]\n\n"
+            return
+
+        if is_smalltalk:
+            history = _history_messages(request, session_id)
+            smalltalk_msgs = _build_smalltalk_messages(request.message, history)
+            accumulated_st: List[str] = []
+            st_primary = request.provider or settings.LLM_PROVIDER
+            st_status = {'ok': False}
+            try:
+                async for delta in await llm_service.chat(smalltalk_msgs, stream=True, provider=st_primary):
+                    if delta:
+                        accumulated_st.append(delta)
+                        yield f"data: {json.dumps({'type': 'delta', 'content': delta}, ensure_ascii=False)}\n\n"
+                st_status['ok'] = True
+            except Exception as e:
+                logger.warning(f"smalltalk流式失败({st_primary}): {e}")
+            if not st_status['ok'] or not accumulated_st:
+                try:
+                    fb = settings.LLM_FALLBACK_PROVIDER
+                    async for delta in await llm_service.chat(smalltalk_msgs, stream=True, provider=fb):
+                        if delta:
+                            accumulated_st.append(delta)
+                            yield f"data: {json.dumps({'type': 'delta', 'content': delta}, ensure_ascii=False)}\n\n"
+                except Exception as e2:
+                    logger.warning(f"smalltalk兜底也失败: {e2}")
+            if not accumulated_st:
+                fallback_st = "您好，请问您想咨询什么问题？我可以为您提供政策咨询、公文写作和办事指引服务。"
+                accumulated_st.append(fallback_st)
+                yield f"data: {json.dumps({'type': 'delta', 'content': fallback_st}, ensure_ascii=False)}\n\n"
+            full_st = "".join(accumulated_st)
+            user_msg = {"role": "user", "content": request.message, "timestamp": int(time.time() * 1000)}
+            assistant_msg = {"role": "assistant", "content": full_st, "references": [], "timestamp": int(time.time() * 1000)}
+            session_store.add_messages(session_id, [user_msg, assistant_msg])
+            yield f"data: {json.dumps({'type': 'done', 'session_id': session_id, 'references': [], 'follow_up_chips': [], 'status': 'smalltalk'}, ensure_ascii=False)}\n\n"
             yield "data: [DONE]\n\n"
             return
 
