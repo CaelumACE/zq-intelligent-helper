@@ -122,6 +122,7 @@ function App() {
     let followUpChips: string[] | undefined
     let started = false
     let controller: AbortController | null = null
+    let idleTimer: ReturnType<typeof setTimeout> | null = null
 
     try {
       const history = nextMessages.filter(m => m.role !== 'system').map(m => ({
@@ -161,9 +162,21 @@ function App() {
       const reader = response.body.getReader()
       const decoder = new TextDecoder()
       let buffer = ''
+      let doneReceived = false
 
-      while (true) {
+      // 60 秒无数据超时保护：代理层/连接挂起时主动 abort，
+      // 避免 reader.read() 一直等待导致 isLoading/isStreaming 无法复位。
+      const resetIdleTimer = () => {
+        if (idleTimer) clearTimeout(idleTimer)
+        idleTimer = setTimeout(() => {
+          controller?.abort()
+        }, 60000)
+      }
+      resetIdleTimer()
+
+      while (!doneReceived) {
         const { done, value } = await reader.read()
+        resetIdleTimer()
         if (done) break
         buffer += decoder.decode(value, { stream: true })
 
@@ -175,7 +188,12 @@ function App() {
           for (const line of block.split('\n')) {
             if (!line.startsWith('data:')) continue
             const payload = line.slice(5).trim()
-            if (!payload || payload === '[DONE]') continue
+            if (!payload) continue
+            // 收到 [DONE] 立即退出，不依赖 TCP 连接正常关闭，避免流挂起
+            if (payload === '[DONE]') {
+              doneReceived = true
+              break
+            }
 
             let evt: { type?: string; content?: string; message?: string; references?: Reference[]; follow_up_chips?: string[]; session_id?: string; status?: Message['status'] }
             try {
@@ -214,9 +232,12 @@ function App() {
             }
           }
 
+          if (doneReceived) break
           boundary = buffer.indexOf('\n\n')
         }
       }
+
+      if (idleTimer) clearTimeout(idleTimer)
 
       if (started) {
         setMessages(prev => prev.map(m => {
@@ -237,6 +258,7 @@ function App() {
         }
       }
     } finally {
+      if (idleTimer) clearTimeout(idleTimer)
       sendingRef.current = false
       const isCurrentRequest = activeRequestRef.current === controller
       if (isCurrentRequest) {
