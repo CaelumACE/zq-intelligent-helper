@@ -39,7 +39,7 @@ class Settings:
     # CORS：默认只允许本机与同源部署；生产可按需用逗号分隔扩展
     CORS_ORIGINS = [o.strip() for o in os.getenv(
         'CORS_ORIGINS',
-        'http://localhost,http://127.0.0.1,http://192.168.135.129',
+        'http://localhost,http://127.0.0.1,http://192.168.135.129,https://zq-intelligent-helper.pages.dev',
     ).split(',') if o.strip()]
 
     # 速率限制：每个来源 IP 在窗口内的最大请求数
