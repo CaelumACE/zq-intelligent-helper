@@ -11,6 +11,9 @@ concurrency:
   group: deploy-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  VITE_API_BASE: https://among-ira-audio-that.trycloudflare.com
+
 jobs:
   deploy:
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
@@ -28,6 +31,10 @@ jobs:
       - name: Build frontend
         working-directory: frontend
         run: npm run build
+      - name: Verify API base in build
+        working-directory: frontend
+        run: |
+          grep -r "trycloudflare" dist/assets/*.js | head -1 && echo "API base injected OK"
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
         with:
