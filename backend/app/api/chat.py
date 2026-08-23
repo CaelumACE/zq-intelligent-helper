@@ -1,5 +1,6 @@
 """对话 API"""
 import json
+import re
 import time
 from datetime import datetime
 from typing import List
@@ -80,7 +81,14 @@ def _is_greeting(text: str) -> bool:
     t = text.strip().lower().rstrip("!！?？。.~～")
     if t in GREETING_PATTERNS:
         return True
-    if len(t) <= 6 and any(g in t for g in ("你好", "您好", "hello", "hi ", "嗨")):
+    # 去掉“啊/呀/哦”等语气词后再判断，覆盖“你好啊、哈喽啊、在吗呀”这类口语化问候
+    t_norm = re.sub(r"[啊呀哦嘛呢吧哟诶唉]+$", "", t)
+    if t_norm in GREETING_PATTERNS:
+        return True
+    # “你是谁 / 你是谁呀 / 介绍一下自己”属于打招呼范畴，不进入 RAG/公文判断
+    if re.fullmatch(r"你是谁(呀|啊|呢)?|介绍一下?自己|你叫什么(名字)?|你在(吗|不在)|你还在(吗|吧)", t_norm):
+        return True
+    if len(t_norm) <= 6 and any(g in t_norm for g in ("你好", "您好", "hello", "hi ", "嗨", "你是谁")):
         return True
     return False
 
