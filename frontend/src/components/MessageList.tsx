@@ -10,6 +10,7 @@ const COLLAPSE_PREVIEW = 200
 interface MessageListProps {
   messages: Message[]
   isLoading: boolean
+  isStreaming?: boolean
   onStop?: () => void
   onRegenerate?: (content: string) => void
   onFollowUp?: (prompt: string) => void
@@ -112,7 +113,11 @@ function MessageItem({
   )
 }
 
-export default function MessageList({ messages, isLoading, onStop, onRegenerate, onFollowUp }: MessageListProps) {
+export default function MessageList({ messages, isLoading, isStreaming = false, onStop, onRegenerate, onFollowUp }: MessageListProps) {
+  // isLoading 只在“尚未产出第一个字”时显示占位气泡；
+  // isStreaming 表示正在流式输出，此时不显示占位气泡，避免双气泡。
+  const active = isLoading || isStreaming
+
   // 找到最新的 AI 消息 id（用于 chip 仅显示在最新一条下方）
   const latestAiId = (() => {
     for (let i = messages.length - 1; i >= 0; i--) {
@@ -127,8 +132,8 @@ export default function MessageList({ messages, isLoading, onStop, onRegenerate,
         <MessageItem
           key={msg.id}
           message={msg}
-          isLatest={!isLoading && msg.id === latestAiId}
-          streaming={isLoading && msg.role === 'assistant' && msg.id === latestAiId}
+          isLatest={!active && msg.id === latestAiId}
+          streaming={isStreaming && msg.role === 'assistant' && msg.id === latestAiId}
           onRegenerate={onRegenerate}
           onFollowUp={onFollowUp}
           allMessages={messages}

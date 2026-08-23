@@ -24,6 +24,7 @@ function App() {
   const activeRequestRef = useRef<AbortController | null>(null)
   const activeAssistantIdRef = useRef<string | null>(null)
   const statusRef = useRef<Message['status'] | undefined>(undefined)
+  const sendingRef = useRef(false)
 
   useEffect(() => {
     loadConversations()
@@ -98,6 +99,8 @@ function App() {
 
   const handleSendMessage = async (content: string, writing?: WritingRequest, followUp = false) => {
     if (isLoading || isStreaming) return
+    if (sendingRef.current) return
+    sendingRef.current = true
     statusRef.current = undefined
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -231,6 +234,7 @@ function App() {
         }
       }
     } finally {
+      sendingRef.current = false
       const isCurrentRequest = activeRequestRef.current === controller
       if (isCurrentRequest) {
         activeRequestRef.current = null
@@ -342,7 +346,8 @@ function App() {
           ) : (
             <MessageList
               messages={messages}
-              isLoading={isLoading || isStreaming}
+              isLoading={isLoading}
+              isStreaming={isStreaming}
               onStop={handleStop}
               onFollowUp={(prompt) => handleSendMessage(prompt, undefined, true)}
             />

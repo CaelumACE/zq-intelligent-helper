@@ -262,7 +262,8 @@ async def chat(request: ChatRequest):
         else:
             if context is None:
                 context = knowledge_service.build_context(context_query, top_k=5)
-            references = knowledge_service.get_references(search_results)
+            # 公文写作是生成类任务，引用来源不放大模型生成前的检索命中，避免“写作结果挂检索引用”
+            references = [] if intent == 'writing' else knowledge_service.get_references(search_results)
             messages = _build_messages(request, session_id, intent, context)
 
             # 3. 主通道 + 失败时切 DeepSeek 兜底
@@ -332,7 +333,8 @@ async def chat_stream(request: ChatRequest):
         session_id, request.message, alias_extra, intent, alias_hit,
         search_results, retrieval_time,
     ))
-    references = knowledge_service.get_references(search_results)
+    # 公文写作是生成类任务，其检索仅用于取写作模板，不向用户展示引用来源
+    references = [] if intent == 'writing' else knowledge_service.get_references(search_results)
     context = knowledge_service.build_context_from_results(search_results) if search_results else ""
 
     # 元信息一次性下发
