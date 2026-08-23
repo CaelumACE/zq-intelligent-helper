@@ -1,5 +1,5 @@
 {
-  "version": "1.3",
+  "version": "1.5",
   "updated": "2026-08-23",
   "owner": "产品经理小赵",
   "description": "RAG检索别名映射表。用户口语词 → 知识库标准条目。检索前做query扩展，命中别名后将target_ids对应的chunk加入候选集并boost加分。target_ids为空表示知识库暂无对应内容，用于意图识别和精准拒答引导。",
@@ -392,7 +392,8 @@
         ],
         "response": "👋 您好！我是政企智能助手，可以帮您查询政策、起草公文、了解办事流程。请问有什么可以帮您？",
         "show_chips": false,
-        "show_references": false
+        "show_references": false,
+        "show_actions": false
       },
       {
         "intent": "self_intro",
@@ -415,7 +416,8 @@
         ],
         "response": "我是政企智能助手，专注于为您提供政策咨询、公文写作和办事指引服务。您可以直接输入问题，比如问我社保缴费比例、帮您写一份通知、或查询营业执照办理流程。请问您想了解什么？",
         "show_chips": false,
-        "show_references": false
+        "show_references": false,
+        "show_actions": false
       },
       {
         "intent": "capability",
@@ -438,7 +440,8 @@
         ],
         "response": "我可以为您提供以下服务：\n\n📋 **政策咨询**——社保、公积金、税收、退休等政策解读\n📝 **公文写作**——通知、报告、纪要、请示等公文一键生成\n🏢 **办事指引**——营业执照、居住证、不动产登记等办事流程、材料和时限\n\n您可以直接输入问题开始使用。",
         "show_chips": false,
-        "show_references": false
+        "show_references": false,
+        "show_actions": false
       },
       {
         "intent": "thanks",
@@ -458,7 +461,8 @@
         ],
         "response": "不客气！很高兴能帮到您。",
         "show_chips": false,
-        "show_references": false
+        "show_references": false,
+        "show_actions": false
       },
       {
         "intent": "acknowledge",
@@ -484,7 +488,8 @@
         "response": "好的，还有其他需要帮助的吗？",
         "show_chips": false,
         "show_references": false,
-        "note": "独立成句且上一轮为实质性问答时触发结束语；若上一轮本身是闲聊/greeting则不重复回复。短句'嗯/行/好'必须作为整条消息独立出现才命中，避免误匹配长句。"
+        "note": "独立成句且上一轮为实质性问答时触发结束语；若上一轮本身是闲聊/greeting则不重复回复。短句'嗯/行/好'必须作为整条消息独立出现才命中，避免误匹配长句。",
+        "show_actions": false
       },
       {
         "intent": "farewell",
@@ -528,7 +533,8 @@
         ],
         "response": "不客气！祝您工作顺利！有需要随时回来。",
         "show_chips": false,
-        "show_references": false
+        "show_references": false,
+        "show_actions": false
       },
       {
         "intent": "chat",
@@ -555,14 +561,16 @@
         "response": "😊 很高兴能帮到您！如果有政策咨询、公文写作或办事指引方面的问题，随时告诉我。",
         "show_chips": false,
         "show_references": false,
-        "note": "纯语气词/笑声/夸赞等轻量回应，给友好回复不拒答。短句独立出现才命中，避免误匹配长句。"
+        "note": "纯语气词/笑声/夸赞等轻量回应，给友好回复不拒答。短句独立出现才命中，避免误匹配长句。",
+        "show_actions": false
       }
     ],
     "refusal_template": {
       "out_of_scope": "抱歉，我是政企智能助手，主要提供政策咨询、公文写作和办事指引服务。您可以问我社保、公积金、营业执照等相关问题，或拨打12345市民服务热线咨询。",
       "no_knowledge": "抱歉，当前知识库未收录该事项的相关信息。建议您拨打12345政务服务热线或12333社保热线咨询，或前往当地政务服务中心了解。",
       "show_chips": false,
-      "show_references": false
+      "show_references": false,
+      "show_actions": false
     },
     "matching_rules": {
       "priority_order": [
@@ -610,6 +618,17 @@
       ],
       "compound_sentence": "用户消息如果包含greeting关键词（你好/您好/hi等），即使后面跟了其他内容（如'你好呀我是小弟'），也优先走greeting话术回复，不走拒答。",
       "pinyin": "支持常见拼音输入：nihao→greeting, wozoule/zoule/baibai→farewell。拼音匹配在去除空格后做包含匹配。"
+    },
+    "global_rules": {
+      "chips": "chips（follow_up_chips/快捷推荐问题）唯一显示条件（必须同时全部满足）：(1) intent为service或writing；(2) 进入了RAG检索并返回了references（writing意图除外）；(3) status不属于greeting/self_intro/capability/thanks/acknowledge/farewell/chat/refusal/out_of_scope中的任何一个；(4) 回复内容是实质性回答而非固定话术。不满足任一条则follow_up_chips必须返回空数组[]，前端不渲染。特别注意：chat场景（哈哈哈/嘿嘿等语气词）和所有dialogue_templates场景都不允许出现chips。",
+      "references": "所有dialogue_templates场景references必须返回空数组[]，不挂引用来源。",
+      "actions": "所有dialogue_templates场景不显示复制/点赞/点踩操作按钮，不显示模型标记。",
+      "backend_implementation": "chat.py中命中dialogue_template后，直接返回{content: template.response, references: [], follow_up_chips: [], status: intent}，不进入RAG检索和LLM生成。",
+      "frontend_guard": "MessageList.tsx渲染chips前增加判断：message.status in ['greeting','self_intro','capability','thanks','acknowledge','farewell','chat','refusal']时强制不渲染chips，双重兜底。",
+      "chip_allowed_only_for": [
+        "service_with_references",
+        "writing_generation"
+      ]
     }
   }
 }

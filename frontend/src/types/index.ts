@@ -5,7 +5,7 @@ export interface Message {
   timestamp: number;
   references?: Reference[];
   model?: string;
-  status?: 'ok' | 'greeting' | 'refusal';
+  status?: 'ok' | 'greeting' | 'self_intro' | 'capability' | 'thanks' | 'acknowledge' | 'farewell' | 'chat' | 'refusal' | 'out_of_scope' | 'writing';
 }
 
 export interface Reference {

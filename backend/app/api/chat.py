@@ -406,7 +406,7 @@ async def chat_stream(request: ChatRequest):
         "intent": "greeting" if is_greeting else ("follow_up" if is_follow_up else intent),
         "references": references,
         "hit_count": len(search_results),
-        "status": "greeting" if is_greeting else ("refusal" if not search_results else "ok"),
+        "status": "greeting" if is_greeting else ("refusal" if not search_results else ("writing" if intent == "writing" else "ok")),
     }
 
     async def event_stream():
@@ -477,7 +477,7 @@ async def chat_stream(request: ChatRequest):
         assistant_msg = {"role": "assistant", "content": full_text, "references": references, "timestamp": int(time.time() * 1000)}
         session_store.add_messages(session_id, [user_msg, assistant_msg])
 
-        yield f"data: {json.dumps({'type': 'done', 'session_id': session_id, 'references': references, 'status': 'ok'}, ensure_ascii=False)}\n\n"
+        yield f"data: {json.dumps({'type': 'done', 'session_id': session_id, 'references': references, 'status': 'writing' if intent == "writing" else 'ok'}, ensure_ascii=False)}\n\n"
         yield "data: [DONE]\n\n"
 
     return StreamingResponse(

@@ -1,9 +1,9 @@
 import type { Message } from '../types'
 
 /**
- * 后续指令 chip 规则：根据上一轮用户问题的主题，
- * 给出 3 个最相关的追问/改写建议。
- * 这些 chip 会渲染在 AI 回复气泡下方，点击后作为下一条消息发送。
+ * 后续指令 chip 规则：只有“进入知识库检索并给出了实质回答”的 AI 回复
+ * 才能在下方渲染快捷推荐问题。其它场景（开场白/拒答/感谢/告别/闲聊/公文写作）
+ * 一律不渲染 chip，避免用户被引导到不相关流程（如被引入公文请示）。
  */
 const CONTEXT_CHIPS_BY_TOPIC: Array<{ match: RegExp; chips: string[] }> = [
   { match: /年终|报告|总结/, chips: ['继续写完整报告', '调整语气更正式', '补充数据说明'] },
@@ -17,20 +17,48 @@ const CONTEXT_CHIPS_BY_TOPIC: Array<{ match: RegExp; chips: string[] }> = [
 const DEFAULT_CHIPS = ['换一种更正式的说法', '列出关键要点', '补充具体示例']
 
 /**
- * 这些答复属于“开场白/拒答/未覆盖引导”，本身不是具体知识回答，
+ * 这些答复属于固定话术/拒答/未覆盖引导，本身不是具体知识回答，
  * 下面挂追问 chip 会让用户误以为可以继续追问具体事项，因此不显示 chip。
  */
 const NO_CHIP_REPLIES = [
   /您好！我是政企智能助手/,
-  /抱歉，这个问题超出了政企智能助手的服务范围/,
+  /我是政企智能助手/,
+  /我可以为您提供以下服务/,
+  /抱歉，这个问题超出了/,
   /已识别为政务服务事项，但当前知识库暂未收录/,
   /不客气！/,
   /感谢使用政企智能助手/,
   /好的，还有其他需要帮助的吗？/,
+  /很高兴能帮到您/,
 ]
+
+/**
+ * 这些 status 属于非实质问答状态，即使后端 status 没下发、旧消息没带 status，
+ * 也必须强制不渲染 chip，作为前后端双重兜底。
+ */
+const NO_CHIP_STATUS = new Set([
+  'greeting',
+  'self_intro',
+  'capability',
+  'thanks',
+  'acknowledge',
+  'farewell',
+  'chat',
+  'refusal',
+  'out_of_scope',
+  'writing',
+])
 
 function isNoChipReply(content: string): boolean {
   return NO_CHIP_REPLIES.some((pattern) => pattern.test(content))
+}
+
+export function shouldShowChips(message: Message | undefined): boolean {
+  if (!message || message.role !== 'assistant') return false
+  // 全局规则：仅有参考资料（真正进入 RAG 检索）的实质回答才出 chip。
+  if (!message.references || message.references.length === 0) return false
+  if (message.status && NO_CHIP_STATUS.has(message.status)) return false
+  return !isNoChipReply(message.content)
 }
 
 /**
@@ -43,12 +71,13 @@ export function isRefusalReply(content: string): boolean {
 }
 
 /**
- * 根据整条对话挑选 chip。取最近一条 AI 回复作为“是否挂 chip”的判断依据，
+ * 根据整条对话挑选 chip。
+ * 先按最新 AI 回复做硬闸门：必须是进入 RAG 检索且有引用的实质回答；
  * 再取最近一条用户消息作为主题依据。
  */
 export function pickFollowUpChips(messages: Message[]): string[] {
   const lastAssistant = [...messages].reverse().find((m) => m.role === 'assistant')
-  if (lastAssistant && isNoChipReply(lastAssistant.content)) return []
+  if (!shouldShowChips(lastAssistant)) return []
   const lastUser = [...messages].reverse().find((m) => m.role === 'user')
   if (!lastUser) return []
   for (const group of CONTEXT_CHIPS_BY_TOPIC) {
