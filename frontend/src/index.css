@@ -273,7 +273,7 @@ body {
   border-radius: var(--r-lg); background: var(--primary); color: #fff; cursor: pointer; transition: background .15s; white-space: nowrap;
 }
 .send-btn:hover:not(:disabled) { background: var(--primary-strong); }
-.send-btn:disabled { background: var(--text-3); color: #fff; cursor: not-allowed; }
+.send-btn:disabled { background: var(--primary); color: #fff; cursor: not-allowed; opacity: .55; }
 .send-btn.streaming { background: var(--danger); }
 
 .input-hint { max-width: 1040px; margin: 8px auto 0; font-size: 12px; color: var(--text-3); text-align: center; }
