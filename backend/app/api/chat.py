@@ -74,8 +74,24 @@ FOLLOW_UP_PROMPT_EXTRA = """
 
 GREETING_PATTERNS = {
     "你好", "您好", "hi", "hello", "嗨", "哈喽", "早上好", "下午好", "晚上好", "中午好",
-    "早安", "午安", "晚安", "在吗", "在不在", "谢谢", "多谢", "辛苦了", "再见", "拜拜",
+    "早安", "午安", "晚安", "在吗", "在不在", "谢谢", "多谢", "感谢", "辛苦了", "再见", "拜拜",
+    "没事了", "没有了", "好的", "嗯", "嗯嗯", "哦", "ok", "okay",
 }
+
+IDENTITY_PATTERNS = re.compile(
+    r"你是谁(呀|啊|呢)?"
+    r"|你叫(什么|啥)(名字|称呼)?"
+    r"|介绍一下?你自己"
+    r"|介绍一下?你"
+    r"|你能做(什么|啥)"
+    r"|你会(什么|什么功能|做什么|干(什么|啥))"
+    r"|你有什么功能"
+    r"|有什么功能"
+    r"|你的功能(有)?哪些"
+    r"|帮我介绍一下?你自己"
+    r"|你在(吗|不在)"
+    r"|你还在(吗|吧)"
+)
 
 def _is_greeting(text: str) -> bool:
     t = text.strip().lower().rstrip("!！?？。.~～")
@@ -85,8 +101,8 @@ def _is_greeting(text: str) -> bool:
     t_norm = re.sub(r"[啊呀哦嘛呢吧哟诶唉]+$", "", t)
     if t_norm in GREETING_PATTERNS:
         return True
-    # “你是谁 / 你是谁呀 / 介绍一下自己”属于打招呼范畴，不进入 RAG/公文判断
-    if re.fullmatch(r"你是谁(呀|啊|呢)?|介绍一下?自己|你叫什么(名字)?|你在(吗|不在)|你还在(吗|吧)", t_norm):
+    # “你是谁 / 你叫什么名字 / 介绍一下自己 / 你能做什么 / 你会什么”属于打招呼范畴
+    if IDENTITY_PATTERNS.fullmatch(t_norm):
         return True
     if len(t_norm) <= 6 and any(g in t_norm for g in ("你好", "您好", "hello", "hi ", "嗨", "你是谁")):
         return True
