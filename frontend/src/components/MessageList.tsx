@@ -42,8 +42,8 @@ function MessageItem({
     ? message.content.slice(0, COLLAPSE_PREVIEW)
     : message.content
 
-  // 只在最新一条 AI 回复、且当前没有正在生成时显示 chip
-  const chips = !isUser && isLatest ? pickFollowUpChips(allMessages) : []
+  // 只在最新一条 AI 回复、且当前没有正在生成时显示 chip；后端下发的关联推荐优先
+  const chips = !isUser && isLatest ? pickFollowUpChips(allMessages, message.followUpChips) : []
 
   const handleCopy = async () => {
     await copyText(message.content)

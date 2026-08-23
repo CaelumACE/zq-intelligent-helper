@@ -119,6 +119,7 @@ function App() {
 
     let sessionId = currentSessionId
     let references: Reference[] | undefined
+    let followUpChips: string[] | undefined
     let started = false
     let controller: AbortController | null = null
 
@@ -176,7 +177,7 @@ function App() {
             const payload = line.slice(5).trim()
             if (!payload || payload === '[DONE]') continue
 
-            let evt: { type?: string; content?: string; message?: string; references?: Reference[]; session_id?: string; status?: Message['status'] }
+            let evt: { type?: string; content?: string; message?: string; references?: Reference[]; follow_up_chips?: string[]; session_id?: string; status?: Message['status'] }
             try {
               evt = JSON.parse(payload)
             } catch {
@@ -189,9 +190,11 @@ function App() {
                 setCurrentSessionId(evt.session_id)
               }
               if (evt.references) references = evt.references
+              if (evt.follow_up_chips) followUpChips = evt.follow_up_chips
               if (evt.status) statusRef.current = evt.status
             } else if (evt.type === 'done') {
               if (evt.status) statusRef.current = evt.status
+              if (evt.follow_up_chips) followUpChips = evt.follow_up_chips
               // Reload conversation list to show the new session in sidebar
               loadConversations()
             } else if (evt.type === 'delta' && evt.content) {
@@ -218,7 +221,7 @@ function App() {
       if (started) {
         setMessages(prev => prev.map(m => {
           if (m.id === assistantId) {
-            return { ...m, references: references ?? m.references, model, status: statusRef.current }
+            return { ...m, references: references ?? m.references, followUpChips: followUpChips ?? m.followUpChips, model, status: statusRef.current }
           }
           return m
         }))

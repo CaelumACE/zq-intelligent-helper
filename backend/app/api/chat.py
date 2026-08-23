@@ -44,6 +44,33 @@ WRITING_PROMPT_EXTRA = """
 要求：先输出一句“以下为参考草稿，请根据实际情况审核修改后下发。”再按国标公文格式排版（标题居中、主送机关顶格、正文分段、落款和日期右对齐）。"""
 
 
+def _related_chips(search_results) -> list:
+    """从 aliases.json 的 related_chips 配置读取关联推荐问题。
+
+    按检索命中条目的 id/title/canonical 三路兜底匹配，取前 3 条；
+    配置缺失时返回空列表（前端回退到基于知识库标题的匹配）。
+    """
+    matched = []
+    alias_entries = knowledge_service.alias_entries or []
+    for result in (search_results or [])[:5]:
+        result_id = result.get('id')
+        result_title = result.get('title')
+        for entry in alias_entries:
+            target_ids = entry.get('target_ids') or []
+            related = entry.get('related_chips') or []
+            if not related:
+                continue
+            canonical = entry.get('canonical') or ''
+            aliases = entry.get('aliases') or []
+            hits = result_id in target_ids or result_title in (canonical, *aliases) or canonical == result_title
+            if hits:
+                for chip in related:
+                    if chip and chip not in matched:
+                        matched.append(chip)
+                    if len(matched) >= 3:
+                        return matched
+    return matched
+
 def _style_section(key: str) -> str:
     """读取 aliases.json response_style_rules 的提示词补充，空配置安全降级。"""
     rules = knowledge_service.response_style_rules or {}
@@ -470,6 +497,7 @@ async def chat_stream(request: ChatRequest):
         "hit_count": len(search_results),
         "status": "greeting" if is_greeting else ("refusal" if not search_results else ("writing" if intent == "writing" else "ok")),
     }
+    follow_up_chips = _related_chips(search_results) if (search_results and references) else []
 
     async def event_stream():
         # 先发元信息和开始事件，前端可立即显示会话ID与引用数
@@ -539,7 +567,7 @@ async def chat_stream(request: ChatRequest):
         assistant_msg = {"role": "assistant", "content": full_text, "references": references, "timestamp": int(time.time() * 1000)}
         session_store.add_messages(session_id, [user_msg, assistant_msg])
 
-        yield f"data: {json.dumps({'type': 'done', 'session_id': session_id, 'references': references, 'status': 'writing' if intent == "writing" else 'ok'}, ensure_ascii=False)}\n\n"
+        yield f"data: {json.dumps({'type': 'done', 'session_id': session_id, 'references': references, 'follow_up_chips': follow_up_chips, 'status': 'writing' if intent == "writing" else 'ok'}, ensure_ascii=False)}\n\n"
         yield "data: [DONE]\n\n"
 
     return StreamingResponse(

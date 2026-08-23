@@ -4,6 +4,7 @@ export interface Message {
   content: string;
   timestamp: number;
   references?: Reference[];
+  followUpChips?: string[];
   model?: string;
   status?: 'ok' | 'greeting' | 'self_intro' | 'capability' | 'thanks' | 'acknowledge' | 'farewell' | 'chat' | 'refusal' | 'out_of_scope' | 'writing';
 }
