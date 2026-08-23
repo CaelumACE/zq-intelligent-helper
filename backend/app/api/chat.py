@@ -185,7 +185,7 @@ async def chat(request: ChatRequest):
         # 1. 知识库检索 + 意图识别
         retrieval_start = time.time()
         intent = 'follow_up' if is_follow_up else knowledge_service.classify_intent(request.message)
-        search_results = knowledge_service.search(context_query, top_k=5)
+        search_results = knowledge_service.search_follow_up(request.message, context_query, top_k=5) if is_follow_up else knowledge_service.search(context_query, top_k=5)
         retrieval_time = (time.time() - retrieval_start) * 1000
 
         # 2. 无命中拒答
@@ -249,7 +249,7 @@ async def chat_stream(request: ChatRequest):
     intent = 'follow_up' if is_follow_up else knowledge_service.classify_intent(request.message)
     if is_follow_up:
         context_query = _previous_user_query(request, session_id)
-        search_results = knowledge_service.search(context_query, top_k=5)
+        search_results = knowledge_service.search_follow_up(request.message, context_query, top_k=5)
     elif is_greeting:
         context_query = request.message
         search_results = []

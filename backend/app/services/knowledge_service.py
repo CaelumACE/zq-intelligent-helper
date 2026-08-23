@@ -378,6 +378,8 @@ class KnowledgeService:
         '重新写', '再来一版', '另一个版本', '换个说法', '换个方式', '调整', '分段',
         '加标题', '改成', '详细一点', '简单一点', '列出关键', '列出要点', '列要点',
         '要点是什么', '有哪些要点', '梳理',
+        '咨询电话', '电话是多少', '热线是多少', '联系方式', '办理窗口', '去哪里办',
+        '线上办理', '办理时限', '需要什么材料', '申请条件',
     )
 
     def classify_intent(self, query: str) -> str:
@@ -478,6 +480,13 @@ class KnowledgeService:
 
     def get_all_documents(self) -> Dict[str, List]:
         return self.documents
+
+    def search_follow_up(self, follow_text: str, context_query: str, top_k: int = 5) -> List[Dict[str, Any]]:
+        """后续指令检索：优先复用上一轮主问题召回结果，避免被公文知识/模板抢走。"""
+        preferred = self.search(context_query, top_k=top_k)
+        if preferred:
+            return preferred
+        return self.search(follow_text, top_k=top_k)
 
     def build_context(self, query: str, top_k: int = 5) -> str:
         results = self.search(query, top_k)
