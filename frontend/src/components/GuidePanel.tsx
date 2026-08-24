@@ -25,5 +25,5 @@ export default function GuidePanel({ token, onRequireLogin }: GuidePanelProps) {
     )
   }
 
-  return <GuideHome onOpenTheme={(themeId) => setActiveTheme({ id: themeId } as GuideTheme)} />
+  return <GuideHome onOpenTheme={setActiveTheme} />
 }

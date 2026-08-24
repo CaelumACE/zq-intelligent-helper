@@ -4,7 +4,7 @@ import Icon from './Icons'
 import type { GuideTheme } from '../types'
 
 interface GuideHomeProps {
-  onOpenTheme: (themeId: string) => void
+  onOpenTheme: (theme: GuideTheme) => void
 }
 
 export default function GuideHome({ onOpenTheme }: GuideHomeProps) {
@@ -35,7 +35,7 @@ export default function GuideHome({ onOpenTheme }: GuideHomeProps) {
       })
       const data = await res.json()
       if (data.matched) {
-        onOpenTheme(data.theme.id)
+        onOpenTheme(data.theme)
       } else {
         setCandidates(data.candidates || [])
         setMessage(data.message || '未找到匹配主题')
@@ -67,7 +67,13 @@ export default function GuideHome({ onOpenTheme }: GuideHomeProps) {
         <div className="guide-candidates">
           <div className="guide-candidate-title">您可能想办的是：</div>
           {candidates.map((c) => (
-            <button key={c.id} className="guide-candidate" onClick={() => onOpenTheme(c.id)}>
+            <button
+              key={c.id}
+              className="guide-candidate"
+              onClick={() =>
+                onOpenTheme(themes.find((t) => t.id === c.id) || ({ id: c.id, name: c.name, estimated_days: 0 } as GuideTheme))
+              }
+            >
               <span>{c.name}</span>
               <span className="guide-candidate-score">{Math.round(c.score * 100)}%</span>
             </button>
@@ -82,7 +88,7 @@ export default function GuideHome({ onOpenTheme }: GuideHomeProps) {
       ) : (
         <div className="guide-grid">
           {themes.map((t) => (
-            <button key={t.id} className="guide-theme-card" onClick={() => onOpenTheme(t.id)}>
+            <button key={t.id} className="guide-theme-card" onClick={() => onOpenTheme(t)}>
               <div className="guide-theme-icon">{t.icon || '📋'}</div>
               <div className="guide-theme-name">{t.name}</div>
               <div className="guide-theme-days">预计 {t.estimated_days} 天</div>
