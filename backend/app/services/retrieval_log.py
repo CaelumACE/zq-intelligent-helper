@@ -12,6 +12,7 @@ from pathlib import Path
 
 from app.core.config import settings
 from app.core.logger import logger
+from app.services.pg_store import pg_store
 
 _lock = threading.Lock()
 _retention_days = 7
@@ -43,7 +44,9 @@ def _cleanup_old_logs() -> None:
 
 
 def log_retrieval(record: dict) -> None:
-    """写入一条检索日志；失败时降级为普通日志，不阻塞问答主流程。"""
+    """写入一条检索日志；PG 可用优先写 PG，否则写 JSONL，不阻塞问答主流程。"""
+    if pg_store.insert_retrieval_log(record):
+        return
     try:
         _log_dir().mkdir(parents=True, exist_ok=True)
         path = _log_path()

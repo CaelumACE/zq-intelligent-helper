@@ -7,6 +7,7 @@ from app.core.logger import logger
 from app.services.embedding_service import embedding_service
 from app.services.vector_store import vector_store
 from app.services.rerank_service import rerank_service
+from app.services.pg_store import pg_store
 
 
 # 领域同义词与扩展词表，用于在轻量关键词检索中提升语义召回
@@ -87,7 +88,13 @@ class KnowledgeService:
             return
         try:
             with open(path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
+                raw_all = json.load(f)
+            from_pg = pg_store.load_aliases()
+            if from_pg is None:
+                pg_store.save_aliases(raw_all)
+                data = raw_all
+            else:
+                data = from_pg
             for entry in data.get('aliases', []):
                 self.alias_entries.append(entry)
                 terms = list(entry.get('aliases', []) or [])
@@ -218,8 +225,20 @@ class KnowledgeService:
         return extra, alias_hit
 
     def _load_data(self):
-        """加载知识库数据"""
+        """加载知识库数据：PG 优先，JSON 作为种子与兜底。"""
         try:
+            from_pg = pg_store.load_documents()
+            if from_pg:
+                self.documents = {
+                    'policies': from_pg.get('policies', []),
+                    'services': from_pg.get('services', []),
+                    'templates': from_pg.get('templates', []),
+                    'knowledge': from_pg.get('knowledge', []),
+                }
+                self._build_chunks()
+                logger.info(f"知识库从 PG 加载: {len(self.documents['policies'])} 政策 + {len(self.documents['services'])} 事项 + {len(self.documents['templates'])} 模板 + {len(self.documents['knowledge'])} 公文知识")
+                return
+
             with open(settings.DATA_DIR / '政策知识库.json', 'r', encoding='utf-8') as f:
                 policies = json.load(f)
 
@@ -241,6 +260,9 @@ class KnowledgeService:
                 'templates': templates,
                 'knowledge': knowledge,
             }
+
+            # 首次启动时把 JSON 种子写入 PG，后续读取走 PG
+            pg_store.save_documents(self.documents)
 
             self._build_chunks()
             logger.info(f"知识库加载完成: {len(policies)} 政策 + {len(services)} 事项 + {len(templates)} 模板 + {len(knowledge)} 公文知识")
