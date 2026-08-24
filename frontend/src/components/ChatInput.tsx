@@ -16,6 +16,7 @@ const MODEL_LABEL: Record<ModelProvider, string> = {
 
 export default function ChatInput({ onSend, onStop, disabled = false, model, onModelChange }: ChatInputProps) {
   const [value, setValue] = useState('')
+  const [modelOpen, setModelOpen] = useState(false)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const prevDisabledRef = useRef(disabled)
 
@@ -57,7 +58,7 @@ export default function ChatInput({ onSend, onStop, disabled = false, model, onM
         <span className="dot" />
         AI 正在回复中，请等待完成后再发送
       </div>
-      <div className="input-row">
+      <div className="input-card">
         <textarea
           ref={inputRef}
           autoFocus
@@ -69,41 +70,69 @@ export default function ChatInput({ onSend, onStop, disabled = false, model, onM
           className="chat-textarea"
           disabled={disabled}
         />
-        <div className="input-side">
-          <div className="input-model-switch" title="切换底层大模型">
-            {Object.entries(MODEL_LABEL).map(([key, label]) => (
+        <div className="input-toolbar">
+          <button className="toolbar-plus" type="button" aria-label="添加" title="添加">＋</button>
+          <div className="toolbar-right">
+            <div className="model-dropdown">
               <button
-                key={key}
-                className={`ms-opt ${model === key ? 'active' : ''}`}
+                className="model-dropdown-trigger"
+                type="button"
                 disabled={disabled}
-                onClick={() => onModelChange(key as ModelProvider)}
+                onClick={() => setModelOpen(v => !v)}
+                title="切换底层大模型"
               >
-                {label}
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="10" />
+                  <path d="M2 12h20" />
+                  <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                </svg>
+                <span>{MODEL_LABEL[model]}</span>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
               </button>
-            ))}
+              {modelOpen && (
+                <div className="dropdown-menu">
+                  {Object.entries(MODEL_LABEL).map(([key, label]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      className={model === key ? 'active' : ''}
+                      onClick={() => {
+                        onModelChange(key as ModelProvider)
+                        setModelOpen(false)
+                      }}
+                    >
+                      <span>{label}</span>
+                      {model === key && <span aria-hidden="true">✓</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <button
+              onClick={handlePrimary}
+              disabled={!disabled && !value.trim()}
+              className={`send-icon-btn ${disabled ? 'streaming' : ''}`}
+              aria-label={disabled ? '停止' : '发送'}
+              title={disabled ? '停止' : '发送'}
+            >
+              {disabled ? (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <rect x="6" y="6" width="12" height="12" rx="2" />
+                </svg>
+              ) : (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M22 2 11 13" />
+                  <path d="M22 2 15 22 11 13 2 9 22 2z" />
+                </svg>
+              )}
+            </button>
           </div>
-          <button
-            onClick={handlePrimary}
-            disabled={!disabled && !value.trim()}
-            className={`send-btn icon-send ${disabled ? 'streaming' : ''}`}
-            aria-label={disabled ? '停止' : '发送'}
-            title={disabled ? '停止' : '发送'}
-          >
-            {disabled ? (
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                <rect x="6" y="6" width="12" height="12" rx="2" />
-              </svg>
-            ) : (
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M22 2 11 13" />
-                <path d="M22 2 15 22 11 13 2 9 22 2z" />
-              </svg>
-            )}
-          </button>
         </div>
       </div>
       <p className="input-hint">
-        当前模型：<span className="model-tag">{MODEL_LABEL[model]}</span> · 内容由 AI 生成，请以官方文件为准
+        内容由 AI 生成，请以官方文件为准
       </p>
     </div>
   )

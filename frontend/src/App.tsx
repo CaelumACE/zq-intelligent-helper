@@ -362,7 +362,7 @@ function App() {
 
       <div className="main-column">
         <Header
-          title={currentView === 'home' ? '政企智能助手' : (conversations.find(c => c.id === currentSessionId)?.title || '对话')}
+          title={currentView === 'home' ? '政企智能助手' : (conversations.find(c => c.id === currentSessionId)?.title || '新对话')}
           onMenu={() => setSidebarOpen(true)}
           onWriting={() => setWritingOpen(true)}
         />
