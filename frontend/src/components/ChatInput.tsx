@@ -6,6 +6,7 @@ interface ChatInputProps {
   onStop?: () => void
   disabled?: boolean
   model: ModelProvider
+  onModelChange: (provider: ModelProvider) => void
 }
 
 const MODEL_LABEL: Record<ModelProvider, string> = {
@@ -13,7 +14,7 @@ const MODEL_LABEL: Record<ModelProvider, string> = {
   deepseek: 'DeepSeek',
 }
 
-export default function ChatInput({ onSend, onStop, disabled = false, model }: ChatInputProps) {
+export default function ChatInput({ onSend, onStop, disabled = false, model, onModelChange }: ChatInputProps) {
   const [value, setValue] = useState('')
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const prevDisabledRef = useRef(disabled)
@@ -64,17 +65,42 @@ export default function ChatInput({ onSend, onStop, disabled = false, model }: C
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="输入您的问题，Enter 发送，Shift+Enter 换行…"
-          rows={1}
+          rows={4}
           className="chat-textarea"
           disabled={disabled}
         />
-        <button
-          onClick={handlePrimary}
-          disabled={!disabled && !value.trim()}
-          className={`send-btn ${disabled ? 'streaming' : ''}`}
-        >
-          {disabled ? '停止' : '发送'}
-        </button>
+        <div className="input-side">
+          <div className="input-model-switch" title="切换底层大模型">
+            {Object.entries(MODEL_LABEL).map(([key, label]) => (
+              <button
+                key={key}
+                className={`ms-opt ${model === key ? 'active' : ''}`}
+                disabled={disabled}
+                onClick={() => onModelChange(key as ModelProvider)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={handlePrimary}
+            disabled={!disabled && !value.trim()}
+            className={`send-btn icon-send ${disabled ? 'streaming' : ''}`}
+            aria-label={disabled ? '停止' : '发送'}
+            title={disabled ? '停止' : '发送'}
+          >
+            {disabled ? (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <rect x="6" y="6" width="12" height="12" rx="2" />
+              </svg>
+            ) : (
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M22 2 11 13" />
+                <path d="M22 2 15 22 11 13 2 9 22 2z" />
+              </svg>
+            )}
+          </button>
+        </div>
       </div>
       <p className="input-hint">
         当前模型：<span className="model-tag">{MODEL_LABEL[model]}</span> · 内容由 AI 生成，请以官方文件为准

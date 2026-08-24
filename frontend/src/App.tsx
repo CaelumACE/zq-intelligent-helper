@@ -362,10 +362,7 @@ function App() {
 
       <div className="main-column">
         <Header
-          title={currentView === 'home' ? '政企智能助手' : '对话'}
-          model={model}
-          streaming={isStreaming || isLoading}
-          onModelChange={setModel}
+          title={currentView === 'home' ? '政企智能助手' : (conversations.find(c => c.id === currentSessionId)?.title || '对话')}
           onMenu={() => setSidebarOpen(true)}
           onWriting={() => setWritingOpen(true)}
         />
@@ -384,7 +381,7 @@ function App() {
           )}
         </div>
 
-        <ChatInput onSend={handleSendMessage} onStop={handleStop} disabled={isStreaming || isLoading} model={model} />
+        <ChatInput onSend={handleSendMessage} onStop={handleStop} disabled={isStreaming || isLoading} model={model} onModelChange={setModel} />
 
         <WritingPanel
           open={writingOpen}
