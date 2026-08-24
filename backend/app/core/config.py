@@ -24,6 +24,11 @@ class Settings:
     
     # 数据库
     DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///./data/gov_assistant.db')
+
+    # JWT
+    JWT_SECRET = os.getenv('JWT_SECRET', 'change-me-in-production-please-64')
+    JWT_ALGORITHM = os.getenv('JWT_ALGORITHM', 'HS256')
+    JWT_EXPIRE_HOURS = int(os.getenv('JWT_EXPIRE_HOURS', '72'))
     
     # Embedding
     EMBEDDING_PROVIDER = os.getenv('EMBEDDING_PROVIDER', 'minimax')

@@ -60,3 +60,49 @@ export type IconName =
   | 'send'
   | 'plus'
   | 'x';
+
+export interface GuideMaterial {
+  name: string;
+  copies?: number;
+  required?: boolean;
+  notes?: string;
+}
+
+export interface GuideStep {
+  id: string;
+  step_order: number;
+  name: string;
+  department?: string;
+  duration_days: number;
+  channel: 'online' | 'offline' | 'both';
+  channel_detail?: string;
+  materials: GuideMaterial[];
+  prerequisites: string[];
+  fee: string;
+  notes?: string;
+}
+
+export interface GuideTheme {
+  id: string;
+  name: string;
+  icon?: string;
+  description?: string;
+  category?: string;
+  keywords?: string[];
+  estimated_days: number;
+}
+
+export interface GuideRoadmap {
+  matched?: boolean;
+  candidates?: { id: string; name: string; score: number }[];
+  message?: string;
+  theme: GuideTheme;
+  steps: GuideStep[];
+  total_days: number;
+}
+
+export interface AuthUser {
+  id: number;
+  username: string;
+  role: string;
+}

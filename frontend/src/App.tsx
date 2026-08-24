@@ -5,7 +5,9 @@ import ChatInput from './components/ChatInput'
 import MessageList from './components/MessageList'
 import WelcomeScreen from './components/WelcomeScreen'
 import WritingPanel from './components/WritingPanel'
-import type { Message, Conversation, Reference, ModelProvider, WritingRequest } from './types'
+import GuidePanel from './components/GuidePanel'
+import LoginModal from './components/LoginModal'
+import type { AuthUser, Message, Conversation, Reference, ModelProvider, WritingRequest } from './types'
 import './App.css'
 
 const API_BASE = __API_BASE__
@@ -20,6 +22,13 @@ function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [model, setModel] = useState<ModelProvider>('deepseek')
   const [writingOpen, setWritingOpen] = useState(false)
+  const [activePanel, setActivePanel] = useState<'qa' | 'guide'>('qa')
+  const [loginOpen, setLoginOpen] = useState(false)
+  const [token, setToken] = useState<string | null>(() => localStorage.getItem('token'))
+  const [user, setUser] = useState<AuthUser | null>(() => {
+    const raw = localStorage.getItem('user')
+    return raw ? JSON.parse(raw) : null
+  })
   const sessionCacheRef = useRef<Map<string, Message[]>>(new Map())
 
   const activeRequestRef = useRef<AbortController | null>(null)
@@ -382,6 +391,27 @@ function App() {
           onWriting={() => setWritingOpen(true)}
         />
 
+        <div className="app-tabs">
+          <button className={activePanel === 'qa' ? 'app-tab active' : 'app-tab'} onClick={() => setActivePanel('qa')}>智能问答</button>
+          <button className={activePanel === 'guide' ? 'app-tab active' : 'app-tab'} onClick={() => setActivePanel('guide')}>我要办事</button>
+          <div className="app-tabs-right">
+            {user ? (
+              <>
+                <span className="app-user">{user.username}</span>
+                <button className="app-user-btn" onClick={() => { localStorage.removeItem('token'); localStorage.removeItem('user'); setToken(null); setUser(null) }}>退出</button>
+              </>
+            ) : (
+              <button className="app-user-btn" onClick={() => setLoginOpen(true)}>登录</button>
+            )}
+          </div>
+        </div>
+
+        {activePanel === 'guide' ? (
+          <div className="guide-panel">
+            <GuidePanel token={token} onRequireLogin={() => setLoginOpen(true)} />
+          </div>
+        ) : (
+          <>
         <div className={`chat-stream ${currentView === 'home' && messages.length === 0 ? 'home' : ''}`}>
           {currentView === 'home' && messages.length === 0 ? (
             <WelcomeScreen onQuickAction={handleSendMessage} disabled={isStreaming || isLoading} />
@@ -397,6 +427,21 @@ function App() {
         </div>
 
         <ChatInput onSend={handleSendMessage} onStop={handleStop} disabled={isStreaming || isLoading} model={model} onModelChange={setModel} />
+          </>
+        )}
+
+        {loginOpen && (
+          <LoginModal
+            onClose={() => setLoginOpen(false)}
+            onLogin={(newToken, newUser) => {
+              localStorage.setItem('token', newToken)
+              localStorage.setItem('user', JSON.stringify(newUser))
+              setToken(newToken)
+              setUser(newUser)
+              setLoginOpen(false)
+            }}
+          />
+        )}
 
         <WritingPanel
           open={writingOpen}

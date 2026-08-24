@@ -1,0 +1,443 @@
+{
+  "version": "1.0",
+  "themes": [
+    {
+      "id": "open_restaurant",
+      "name": "我要开饭店",
+      "icon": "🏪",
+      "description": "开设餐饮服务企业，从注册到开业全流程办事指南",
+      "category": "business",
+      "keywords": ["开饭店", "开餐馆", "餐饮", "餐厅", "饭馆", "开小吃店"],
+      "estimated_days": 21,
+      "steps": [
+        {
+          "id": "or_s1",
+          "step_order": 1,
+          "name": "办理营业执照",
+          "department": "市场监督管理局",
+          "duration_days": 3,
+          "channel": "both",
+          "channel_detail": "线上：省政务服务网企业开办专区；线下：辖区政务大厅市监窗口",
+          "materials": [
+            {"name": "法人身份证原件及复印件", "copies": 1, "required": true, "notes": ""},
+            {"name": "经营场所租赁合同或房产证明", "copies": 1, "required": true, "notes": "需明确商用性质"},
+            {"name": "1寸免冠照片", "copies": 2, "required": true, "notes": ""},
+            {"name": "企业名称预先核准通知书", "copies": 1, "required": false, "notes": "可网上自主申报"}
+          ],
+          "prerequisites": [],
+          "fee": "免费",
+          "notes": "建议同步刻制公章、财务章、法人章，可在一站式窗口联办"
+        },
+        {
+          "id": "or_s2",
+          "step_order": 2,
+          "name": "办理食品经营许可证",
+          "department": "市场监督管理局（食品药品监管）",
+          "duration_days": 7,
+          "channel": "both",
+          "channel_detail": "线上：省政务服务网食品经营许可专区；线下：辖区市监所",
+          "materials": [
+            {"name": "营业执照副本复印件", "copies": 1, "required": true, "notes": ""},
+            {"name": "法定代表人身份证复印件", "copies": 1, "required": true, "notes": ""},
+            {"name": "从业人员健康证", "copies": 1, "required": true, "notes": "所有接触食品的员工均需办理"},
+            {"name": "经营场所平面布局图", "copies": 1, "required": true, "notes": "标明厨房、消毒区、就餐区"},
+            {"name": "食品安全管理制度文本", "copies": 1, "required": true, "notes": "可在市监局网站下载模板"}
+          ],
+          "prerequisites": ["or_s1"],
+          "fee": "免费",
+          "notes": "现场核查通过后发证，建议提前按规范布置后厨"
+        },
+        {
+          "id": "or_s3",
+          "step_order": 3,
+          "name": "消防安全检查/备案",
+          "department": "消防救援大队",
+          "duration_days": 10,
+          "channel": "offline",
+          "channel_detail": "线下：辖区消防救援大队窗口提交材料",
+          "materials": [
+            {"name": "营业执照复印件", "copies": 1, "required": true, "notes": ""},
+            {"name": "场所租赁合同或产权证明", "copies": 1, "required": true, "notes": ""},
+            {"name": "消防设施平面布置图", "copies": 1, "required": true, "notes": "标注灭火器、应急照明、疏散通道"},
+            {"name": "消防安全管理制度", "copies": 1, "required": true, "notes": ""}
+          ],
+          "prerequisites": ["or_s1"],
+          "fee": "免费",
+          "notes": "面积小于300㎡可走备案制，大于300㎡需申请消防安全检查"
+        },
+        {
+          "id": "or_s4",
+          "step_order": 4,
+          "name": "税务登记及发票申领",
+          "department": "税务局",
+          "duration_days": 1,
+          "channel": "both",
+          "channel_detail": "线上：电子税务局；线下：辖区办税服务厅",
+          "materials": [
+            {"name": "营业执照副本", "copies": 1, "required": true, "notes": ""},
+            {"name": "法人身份证原件", "copies": 1, "required": true, "notes": ""},
+            {"name": "公章、财务章、法人章", "copies": 1, "required": true, "notes": "现场需盖章"},
+            {"name": "银行开户许可证或基本存款账户信息", "copies": 1, "required": false, "notes": "已开户的携带"}
+          ],
+          "prerequisites": ["or_s1"],
+          "fee": "免费（发票工本费除外）",
+          "notes": "多证合一后营业执照已含税务登记，但需到税务大厅做税种核定和票种核定"
+        },
+        {
+          "id": "or_s5",
+          "step_order": 5,
+          "name": "用工登记及社保开户",
+          "department": "人力资源和社会保障局",
+          "duration_days": 2,
+          "channel": "both",
+          "channel_detail": "线上：省人社网上办事大厅；线下：辖区社保经办窗口",
+          "materials": [
+            {"name": "营业执照复印件", "copies": 1, "required": true, "notes": ""},
+            {"name": "法人身份证复印件", "copies": 1, "required": true, "notes": ""},
+            {"name": "银行基本存款账户信息", "copies": 1, "required": true, "notes": "用于签订代扣协议"}
+          ],
+          "prerequisites": ["or_s1"],
+          "fee": "免费",
+          "notes": "有雇工必须在30日内办理社保登记"
+        }
+      ]
+    },
+    {
+      "id": "open_convenience_store",
+      "name": "我要开便利店",
+      "icon": "🏬",
+      "description": "开设零售便利店，含烟草、食品经营许可全流程",
+      "category": "business",
+      "keywords": ["开便利店", "开小超市", "开小卖部", "开杂货店", "开烟酒超市"],
+      "estimated_days": 18,
+      "steps": [
+        {
+          "id": "cs_s1",
+          "step_order": 1,
+          "name": "办理营业执照",
+          "department": "市场监督管理局",
+          "duration_days": 3,
+          "channel": "both",
+          "channel_detail": "线上：省政务服务网企业开办专区；线下：辖区政务大厅市监窗口",
+          "materials": [
+            {"name": "法人身份证", "copies": 1, "required": true, "notes": ""},
+            {"name": "经营场所证明", "copies": 1, "required": true, "notes": "租赁合同或房产证明"},
+            {"name": "1寸照片", "copies": 2, "required": true, "notes": ""}
+          ],
+          "prerequisites": [],
+          "fee": "免费",
+          "notes": ""
+        },
+        {
+          "id": "cs_s2",
+          "step_order": 2,
+          "name": "烟草专卖零售许可证",
+          "department": "烟草专卖局",
+          "duration_days": 8,
+          "channel": "offline",
+          "channel_detail": "线下：辖区烟草专卖局窗口提交材料",
+          "materials": [
+            {"name": "营业执照副本", "copies": 1, "required": true, "notes": ""},
+            {"name": "法人身份证", "copies": 1, "required": true, "notes": ""},
+            {"name": "经营场所证明", "copies": 1, "required": true, "notes": ""},
+            {"name": "资金证明（5000元以上）", "copies": 1, "required": true, "notes": ""}
+          ],
+          "prerequisites": ["cs_s1"],
+          "fee": "免费",
+          "notes": "需符合烟草零售点合理布局要求，周边50米内可能限制数量"
+        },
+        {
+          "id": "cs_s3",
+          "step_order": 3,
+          "name": "食品经营许可证（含预包装食品）",
+          "department": "市场监督管理局",
+          "duration_days": 5,
+          "channel": "both",
+          "channel_detail": "线上：省政务服务网；线下：辖区市监所",
+          "materials": [
+            {"name": "营业执照副本", "copies": 1, "required": true, "notes": ""},
+            {"name": "健康证（如售散装食品）", "copies": 1, "required": false, "notes": ""},
+            {"name": "场所布局图", "copies": 1, "required": true, "notes": ""},
+            {"name": "食品安全管理制度", "copies": 1, "required": true, "notes": ""}
+          ],
+          "prerequisites": ["cs_s1"],
+          "fee": "免费",
+          "notes": ""
+        },
+        {
+          "id": "cs_s4",
+          "step_order": 4,
+          "name": "税务登记及发票申领",
+          "department": "税务局",
+          "duration_days": 1,
+          "channel": "both",
+          "channel_detail": "线上：电子税务局；线下：辖区办税服务厅",
+          "materials": [
+            {"name": "营业执照副本", "copies": 1, "required": true, "notes": ""},
+            {"name": "法人身份证", "copies": 1, "required": true, "notes": ""},
+            {"name": "公章财务章", "copies": 1, "required": true, "notes": ""}
+          ],
+          "prerequisites": ["cs_s1"],
+          "fee": "免费",
+          "notes": ""
+        }
+      ]
+    },
+    {
+      "id": "talent_introduction",
+      "name": "人才引进落户",
+      "icon": "🎓",
+      "description": "高层次人才/学历人才引进，从申请到落户全流程",
+      "category": "talent",
+      "keywords": ["人才引进", "落户", "迁户口", "学历落户", "人才落户", "应届生落户"],
+      "estimated_days": 30,
+      "steps": [
+        {
+          "id": "ti_s1",
+          "step_order": 1,
+          "name": "学历/资格认证",
+          "department": "人社局/学信网",
+          "duration_days": 7,
+          "channel": "online",
+          "channel_detail": "学信网在线验证学历，国外学历需教育部留学服务中心认证",
+          "materials": [
+            {"name": "身份证", "copies": 1, "required": true, "notes": ""},
+            {"name": "毕业证/学位证", "copies": 1, "required": true, "notes": ""},
+            {"name": "学历认证报告（学信网下载）", "copies": 1, "required": true, "notes": ""}
+          ],
+          "prerequisites": [],
+          "fee": "学信网免费，国(境)外认证360元",
+          "notes": ""
+        },
+        {
+          "id": "ti_s2",
+          "step_order": 2,
+          "name": "提交人才引进申请",
+          "department": "人力资源和社会保障局",
+          "duration_days": 10,
+          "channel": "both",
+          "channel_detail": "线上：省人社网上办事大厅；线下：辖区人社窗口",
+          "materials": [
+            {"name": "身份证", "copies": 1, "required": true, "notes": ""},
+            {"name": "学历学位证书及认证报告", "copies": 1, "required": true, "notes": ""},
+            {"name": "劳动合同（社保缴纳证明）", "copies": 1, "required": true, "notes": ""},
+            {"name": "户口本（首页及本人页）", "copies": 1, "required": true, "notes": ""},
+            {"name": "近期免冠照片", "copies": 2, "required": true, "notes": ""}
+          ],
+          "prerequisites": ["ti_s1"],
+          "fee": "免费",
+          "notes": "部分城市需先有接收单位并连续缴纳社保3-6个月"
+        },
+        {
+          "id": "ti_s3",
+          "step_order": 3,
+          "name": "办理户口迁移",
+          "department": "公安局（派出所）",
+          "duration_days": 7,
+          "channel": "offline",
+          "channel_detail": "线下：拟落户地辖区派出所户籍窗口",
+          "materials": [
+            {"name": "人社局出具的人才引进批复", "copies": 1, "required": true, "notes": ""},
+            {"name": "户口迁移证（原户籍地派出所开具）", "copies": 1, "required": true, "notes": ""},
+            {"name": "身份证", "copies": 1, "required": true, "notes": ""},
+            {"name": "拟落户地址证明（房产证/集体户口首页）", "copies": 1, "required": true, "notes": ""},
+            {"name": "照片", "copies": 2, "required": true, "notes": ""}
+          ],
+          "prerequisites": ["ti_s2"],
+          "fee": "免费（户口簿工本费10元）",
+          "notes": ""
+        },
+        {
+          "id": "ti_s4",
+          "step_order": 4,
+          "name": "社保关系转入及档案调转",
+          "department": "人社局/社保中心",
+          "duration_days": 15,
+          "channel": "both",
+          "channel_detail": "线上：人社网上办事大厅；线下：社保经办窗口",
+          "materials": [
+            {"name": "新户口本/身份证", "copies": 1, "required": true, "notes": ""},
+            {"name": "原参保地社保缴费凭证", "copies": 1, "required": true, "notes": ""},
+            {"name": "劳动合同", "copies": 1, "required": true, "notes": ""}
+          ],
+          "prerequisites": ["ti_s3"],
+          "fee": "免费",
+          "notes": "档案通过机要方式转递，个人不得自带"
+        }
+      ]
+    },
+    {
+      "id": "social_insurance_transfer",
+      "name": "社保关系跨省转移",
+      "icon": "🔄",
+      "description": "跨省流动就业人员社保关系转移接续办事指南",
+      "category": "social",
+      "keywords": ["社保转移", "跨省社保", "养老保险转移", "医保转移", "换城市工作社保"],
+      "estimated_days": 45,
+      "steps": [
+        {
+          "id": "st_s1",
+          "step_order": 1,
+          "name": "在原参保地开具参保缴费凭证",
+          "department": "原参保地社保经办机构",
+          "duration_days": 1,
+          "channel": "both",
+          "channel_detail": "线上：国家社会保险公共服务平台/掌上12333；线下：原参保地社保大厅",
+          "materials": [
+            {"name": "身份证", "copies": 1, "required": true, "notes": ""},
+            {"name": "社保卡（如有）", "copies": 1, "required": false, "notes": ""}
+          ],
+          "prerequisites": [],
+          "fee": "免费",
+          "notes": "建议离职时同步办理，避免跨城跑腿"
+        },
+        {
+          "id": "st_s2",
+          "step_order": 2,
+          "name": "在新参保地提交转入申请",
+          "department": "新参保地社保经办机构",
+          "duration_days": 15,
+          "channel": "both",
+          "channel_detail": "线上：国家社会保险公共服务平台；线下：新参保地社保大厅",
+          "materials": [
+            {"name": "身份证", "copies": 1, "required": true, "notes": ""},
+            {"name": "原参保地参保缴费凭证", "copies": 1, "required": true, "notes": ""},
+            {"name": "劳动合同（新单位）", "copies": 1, "required": true, "notes": ""},
+            {"name": "社保卡", "copies": 1, "required": true, "notes": ""}
+          ],
+          "prerequisites": ["st_s1"],
+          "fee": "免费",
+          "notes": "需在新参保地已建立基本养老保险账户并实际缴费"
+        },
+        {
+          "id": "st_s3",
+          "step_order": 3,
+          "name": "两地社保机构审核与信息传递",
+          "department": "新旧参保地社保机构（系统内部）",
+          "duration_days": 15,
+          "channel": "online",
+          "channel_detail": "无需个人操作，新参保地发联系函→原参保地转信息表和资金",
+          "materials": [],
+          "prerequisites": ["st_s2"],
+          "fee": "免费",
+          "notes": "无需个人操作，新参保地发联系函→原参保地转信息表和资金"
+        },
+        {
+          "id": "st_s4",
+          "step_order": 4,
+          "name": "账户合并办结确认",
+          "department": "新参保地社保经办机构",
+          "duration_days": 15,
+          "channel": "online",
+          "channel_detail": "可在掌上12333 APP查询转移进度",
+          "materials": [
+            {"name": "身份证", "copies": 1, "required": true, "notes": ""}
+          ],
+          "prerequisites": ["st_s3"],
+          "fee": "免费",
+          "notes": "办结后缴费年限累计计算"
+        }
+      ]
+    },
+    {
+      "id": "housing_fund_loan",
+      "name": "住房公积金贷款",
+      "icon": "🏠",
+      "description": "购买自住住房申请公积金贷款全流程办事指南",
+      "category": "housing",
+      "keywords": ["公积金贷款", "住房贷款", "公积金买房", "房贷", "公积金借款"],
+      "estimated_days": 35,
+      "steps": [
+        {
+          "id": "hl_s1",
+          "step_order": 1,
+          "name": "购房资格及贷款资格审核",
+          "department": "住房公积金管理中心",
+          "duration_days": 3,
+          "channel": "both",
+          "channel_detail": "线上：公积金中心网厅；线下：公积金服务大厅",
+          "materials": [
+            {"name": "身份证", "copies": 1, "required": true, "notes": ""},
+            {"name": "户口本", "copies": 1, "required": true, "notes": ""},
+            {"name": "婚姻状况证明（结婚证/单身声明）", "copies": 1, "required": true, "notes": ""},
+            {"name": "购房合同/认购协议", "copies": 1, "required": true, "notes": ""},
+            {"name": "公积金缴存证明（连续6个月以上）", "copies": 1, "required": true, "notes": ""},
+            {"name": "征信报告", "copies": 1, "required": true, "notes": ""}
+          ],
+          "prerequisites": [],
+          "fee": "免费",
+          "notes": "通常要求连续足额缴存6个月（含）以上，征信无严重不良记录"
+        },
+        {
+          "id": "hl_s2",
+          "step_order": 2,
+          "name": "提交贷款申请及面签",
+          "department": "住房公积金管理中心/受托银行",
+          "duration_days": 7,
+          "channel": "offline",
+          "channel_detail": "线下：公积金中心或受托银行网点面签",
+          "materials": [
+            {"name": "身份证、户口本", "copies": 1, "required": true, "notes": ""},
+            {"name": "婚姻证明", "copies": 1, "required": true, "notes": ""},
+            {"name": "购房合同正本（已备案）", "copies": 1, "required": true, "notes": ""},
+            {"name": "首付款发票/收据", "copies": 1, "required": true, "notes": ""},
+            {"name": "收入证明", "copies": 1, "required": true, "notes": ""},
+            {"name": "银行流水（近6个月）", "copies": 1, "required": true, "notes": ""},
+            {"name": "公积金缴存明细", "copies": 1, "required": true, "notes": ""}
+          ],
+          "prerequisites": ["hl_s1"],
+          "fee": "免费",
+          "notes": "夫妻共同申请需双方到场面签"
+        },
+        {
+          "id": "hl_s3",
+          "step_order": 3,
+          "name": "房产评估（二手房需）",
+          "department": "公积金中心认可的评估机构",
+          "duration_days": 5,
+          "channel": "offline",
+          "channel_detail": "线下：公积金中心认可的评估机构办理",
+          "materials": [
+            {"name": "房产证复印件", "copies": 1, "required": true, "notes": ""},
+            {"name": "购房合同", "copies": 1, "required": true, "notes": ""},
+            {"name": "买卖双方身份证", "copies": 1, "required": true, "notes": ""}
+          ],
+          "prerequisites": ["hl_s2"],
+          "fee": "评估费约300-600元",
+          "notes": "新房（开发商一手房）通常免评估"
+        },
+        {
+          "id": "hl_s4",
+          "step_order": 4,
+          "name": "签订借款合同及抵押合同",
+          "department": "受托银行/不动产登记中心",
+          "duration_days": 5,
+          "channel": "offline",
+          "channel_detail": "线下：受托银行及不动产登记中心",
+          "materials": [
+            {"name": "全部申请材料原件", "copies": 1, "required": true, "notes": ""},
+            {"name": "评估报告（二手房）", "copies": 1, "required": true, "notes": ""},
+            {"name": "购房合同", "copies": 1, "required": true, "notes": ""},
+            {"name": "首付款凭证", "copies": 1, "required": true, "notes": ""}
+          ],
+          "prerequisites": ["hl_s3"],
+          "fee": "抵押登记费80元（住宅）",
+          "notes": ""
+        },
+        {
+          "id": "hl_s5",
+          "step_order": 5,
+          "name": "贷款发放及还款",
+          "department": "受托银行",
+          "duration_days": 15,
+          "channel": "online",
+          "channel_detail": "抵押登记完成后银行放款至开发商/卖方账户",
+          "materials": [],
+          "prerequisites": ["hl_s4"],
+          "fee": "免费",
+          "notes": "抵押登记完成后银行放款至开发商/卖方账户，次月开始还款"
+        }
+      ]
+    }
+  ]
+}

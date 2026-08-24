@@ -11,6 +11,8 @@ from app.core.config import settings
 from app.core.logger import logger
 from app.services.vector_store import vector_store
 from app.api import chat, knowledge
+from app.routers import auth, guide
+from app.services import guide_store
 
 
 @asynccontextmanager
@@ -19,6 +21,8 @@ async def lifespan(app: FastAPI):
     if vector_store.mode == "postgres":
         ok = vector_store.initialize_database()
         logger.info(f"pgvector 初始化: {'成功' if ok else '失败/降级内存'}")
+    guide_store.ensure_demo_user()
+    guide_store.init_guide_db()
     yield
 
 
@@ -62,6 +66,8 @@ async def rate_limit_middleware(request: Request, call_next):
 # 注册路由
 app.include_router(chat.router, prefix="/api/chat", tags=["对话"])
 app.include_router(knowledge.router, prefix="/api/knowledge", tags=["知识库"])
+app.include_router(auth.router, prefix="/api/auth", tags=["认证"])
+app.include_router(guide.router, prefix="/api/guide", tags=["导办"])
 
 
 @app.get("/health")
