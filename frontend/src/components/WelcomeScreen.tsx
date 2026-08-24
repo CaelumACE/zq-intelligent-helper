@@ -1,4 +1,5 @@
 import { quickActions } from '../utils/mockData'
+import Icon from './Icons'
 
 interface WelcomeScreenProps {
   onQuickAction: (prompt: string) => void
@@ -19,10 +20,10 @@ export default function WelcomeScreen({ onQuickAction, disabled = false }: Welco
           <div className="greet-avator">政</div>
           <div className="greet-text">
             <div className="greet-title">
-              您好，我是政企智能助手 <span className="greet-hand">👋</span>
+              您好，我是政企智能助手
             </div>
             <div className="greet-sub">
-              您可以问我<b>政策问题</b>、让我<b>帮您写公文</b>、或<b>了解办事流程</b>。请问今天想了解什么？
+              把公文撰写、政策咨询与办事指引，交给智企一次完成。
             </div>
           </div>
         </div>
@@ -38,7 +39,7 @@ export default function WelcomeScreen({ onQuickAction, disabled = false }: Welco
         <div className="suggest-grid">
           {quickActions.map((action) => (
             <button key={action.id} onClick={() => !disabled && onQuickAction(action.prompt)} disabled={disabled} className="suggest-card">
-              <div className="suggest-ic">{action.icon}</div>
+              <div className="suggest-ic"><Icon name={action.icon} size={22} /></div>
               <div className="suggest-q">{action.label}</div>
               <span className="suggest-tag">{action.tag}</span>
             </button>

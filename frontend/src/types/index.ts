@@ -33,10 +33,30 @@ export interface WritingRequest {
 
 export interface QuickActionItem {
   id: string;
-  icon: string;
+  icon: IconName;
   label: string;
   tag: string;
   prompt: string;
 }
 
 export type ModelProvider = 'minimax' | 'deepseek';
+
+export type IconName =
+  | 'book'
+  | 'pen'
+  | 'compass'
+  | 'home'
+  | 'bell'
+  | 'star'
+  | 'search'
+  | 'user'
+  | 'menu'
+  | 'chevron-down'
+  | 'copy'
+  | 'refresh'
+  | 'thumbs-up'
+  | 'thumbs-down'
+  | 'square'
+  | 'send'
+  | 'plus'
+  | 'x';

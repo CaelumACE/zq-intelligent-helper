@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import Icon from './Icons'
 import type { Conversation } from '../types'
 
 interface SidebarProps {
@@ -56,7 +57,7 @@ export default function Sidebar({
       </div>
 
       <button onClick={onNewChat} className="new-btn">
-        ＋ 新建对话
+        <Icon name="plus" size={15} /> 新建对话
       </button>
 
       <div className="conv-wrap">
@@ -85,7 +86,7 @@ export default function Sidebar({
                           if (e.key === 'Enter') onDeleteConversation(conv.id, e as unknown as React.MouseEvent)
                         }}
                       >
-                        ✕
+                        <Icon name="x" size={14} />
                       </span>
                     </button>
                   </div>

@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, type KeyboardEvent } from 'react'
+import Icon from './Icons'
 import type { ModelProvider } from '../types'
 
 interface ChatInputProps {
@@ -71,7 +72,7 @@ export default function ChatInput({ onSend, onStop, disabled = false, model, onM
           disabled={disabled}
         />
         <div className="input-toolbar">
-          <button className="toolbar-plus" type="button" aria-label="添加" title="添加">＋</button>
+          <button className="toolbar-plus" type="button" aria-label="添加" title="添加"><Icon name="plus" size={18} /></button>
           <div className="toolbar-right">
             <div className="model-dropdown">
               <button
@@ -81,15 +82,9 @@ export default function ChatInput({ onSend, onStop, disabled = false, model, onM
                 onClick={() => setModelOpen(v => !v)}
                 title="切换底层大模型"
               >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <circle cx="12" cy="12" r="10" />
-                  <path d="M2 12h20" />
-                  <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-                </svg>
+<Icon name="search" size={15} />
                 <span>{MODEL_LABEL[model]}</span>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="m6 9 6 6 6-6" />
-                </svg>
+<Icon name="chevron-down" size={12} />
               </button>
               {modelOpen && (
                 <div className="dropdown-menu">
@@ -117,16 +112,7 @@ export default function ChatInput({ onSend, onStop, disabled = false, model, onM
               aria-label={disabled ? '停止' : '发送'}
               title={disabled ? '停止' : '发送'}
             >
-              {disabled ? (
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                  <rect x="6" y="6" width="12" height="12" rx="2" />
-                </svg>
-              ) : (
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M22 2 11 13" />
-                  <path d="M22 2 15 22 11 13 2 9 22 2z" />
-                </svg>
-              )}
+              {disabled ? <Icon name="square" size={15} /> : <Icon name="send" size={18} />}
             </button>
           </div>
         </div>

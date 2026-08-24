@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import Icon from './Icons'
 import type { ModelProvider, WritingRequest } from '../types'
 
 interface WritingPanelProps {
@@ -30,8 +31,8 @@ export default function WritingPanel({ open, onClose, onGenerate, model }: Writi
   return (
     <div className={`doc-panel ${open ? 'open' : ''}`}>
       <div className="doc-head">
-        <h3>✍️ 公文写作助手</h3>
-        <span className="doc-close" onClick={onClose}>✕</span>
+        <h3><Icon name="pen" size={16} /> 公文写作助手</h3>
+        <button className="doc-close" onClick={onClose} aria-label="关闭"><Icon name="x" size={18} /></button>
       </div>
       <div className="doc-tabs">
         {DOC_TYPES.map((type) => (

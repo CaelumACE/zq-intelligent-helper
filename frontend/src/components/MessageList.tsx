@@ -3,6 +3,7 @@ import type { Message } from '../types'
 import { copyText } from '../utils/clipboard'
 import { pickFollowUpChips, isRefusalReply } from '../utils/followUpChips'
 import MarkdownContent from './MarkdownContent'
+import Icon from './Icons'
 
 const COLLAPSE_THRESHOLD = 300
 const COLLAPSE_PREVIEW = 200
@@ -58,20 +59,20 @@ function MessageItem({
         <div className={isUser ? 'bubble-user' : 'bubble-ai'}>
           <MarkdownContent content={shownContent} />
           {isLong && !expanded && (
-            <button className="collapse-toggle" onClick={() => setExpanded(true)}>展开全文 ▼</button>
+            <button className="collapse-toggle" onClick={() => setExpanded(true)}>展开全文</button>
           )}
           {isLong && expanded && (
-            <button className="collapse-toggle" onClick={() => setExpanded(false)}>收起 ▲</button>
+            <button className="collapse-toggle" onClick={() => setExpanded(false)}>收起</button>
           )}
         </div>
         {!streaming && !refusal && (
           <div className="msg-actions">
-            <button className="mini-btn" onClick={handleCopy}>{copied ? '✓ 已复制' : '📋 复制'}</button>
+            <button className="mini-btn" onClick={handleCopy}>{copied ? '✓ 已复制' : <><Icon name="copy" size={13} /> 复制</>}</button>
             {!isUser && (
               <>
-                <button className={`mini-btn ${feedback === 'up' ? 'active' : ''}`} onClick={() => setFeedback(feedback === 'up' ? null : 'up')}>👍</button>
-                <button className={`mini-btn ${feedback === 'down' ? 'active' : ''}`} onClick={() => setFeedback(feedback === 'down' ? null : 'down')}>👎</button>
-                {onRegenerate && <button className="mini-btn" onClick={() => onRegenerate(message.content)}>🔄 重新生成</button>}
+                <button className={`mini-btn ${feedback === 'up' ? 'active' : ''}`} onClick={() => setFeedback(feedback === 'up' ? null : 'up')}><Icon name="thumbs-up" size={13} /></button>
+                <button className={`mini-btn ${feedback === 'down' ? 'active' : ''}`} onClick={() => setFeedback(feedback === 'down' ? null : 'down')}><Icon name="thumbs-down" size={13} /></button>
+                {onRegenerate && <button className="mini-btn" onClick={() => onRegenerate(message.content)}><Icon name="refresh" size={13} /> 重新生成</button>}
               </>
             )}
             {!isUser && message.model && <span className="stream-meta">已完成 · {message.model === 'minimax' ? 'MiniMax' : 'DeepSeek'}</span>}
@@ -156,7 +157,7 @@ export default function MessageList({ messages, isLoading, isStreaming = false, 
               <span className="typing-cursor" />
             </div>
             <div className="msg-actions">
-              {onStop && <button className="mini-btn stop" onClick={onStop}>■ 停止生成</button>}
+              {onStop && <button className="mini-btn stop" onClick={onStop}><Icon name="square" size={12} /> 停止生成</button>}
             </div>
           </div>
         </div>
