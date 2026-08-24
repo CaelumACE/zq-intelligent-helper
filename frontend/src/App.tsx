@@ -20,11 +20,13 @@ function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [model, setModel] = useState<ModelProvider>('deepseek')
   const [writingOpen, setWritingOpen] = useState(false)
+  const sessionCacheRef = useRef<Map<string, Message[]>>(new Map())
 
   const activeRequestRef = useRef<AbortController | null>(null)
   const activeAssistantIdRef = useRef<string | null>(null)
   const statusRef = useRef<Message['status'] | undefined>(undefined)
   const sendingRef = useRef(false)
+  const sessionSelectRef = useRef<string | null>(null)
 
   useEffect(() => {
     loadConversations()
@@ -299,24 +301,37 @@ function App() {
     }))
   }
 
-  const handleSelectConversation = async (id: string) => {
+  const handleSelectConversation = (id: string) => {
+    sessionSelectRef.current = id
     abortActiveRequest()
-    try {
-      const res = await fetch(`${API_BASE}/chat/sessions/${id}`)
-      const data = await res.json()
-      setCurrentSessionId(id)
-      const normalized = normalizeMessages(data.messages || [], id)
-      setMessages(normalized)
-      setCurrentView(normalized.length ? 'chat' : 'home')
+    setIsLoading(false)
+    setIsStreaming(false)
+    setCurrentSessionId(id)
+    const cached = sessionCacheRef.current.get(id)
+    if (cached) {
+      setMessages(cached)
+      setCurrentView(cached.length ? 'chat' : 'home')
       setSidebarOpen(false)
-    } catch (e) {
-      console.error('加载会话详情失败', e)
+      return
     }
+    setSidebarOpen(false)
+    fetch(`${API_BASE}/chat/sessions/${id}`)
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`))))
+      .then((data) => {
+        if (sessionSelectRef.current !== id) return
+        const normalized = normalizeMessages(data.messages || [], id)
+        sessionCacheRef.current.set(id, normalized)
+        setMessages(normalized)
+        setCurrentView(normalized.length ? 'chat' : 'home')
+        setSidebarOpen(false)
+      })
+      .catch((e) => console.error('加载会话详情失败', e))
   }
 
   const handleDeleteConversation = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation()
     e.preventDefault()
+    sessionCacheRef.current.delete(id)
 
     // 先在本地点掉侧栏条目，再发请求，避免等 DELETE 响应 + 列表重载造成的延迟
     setConversations(prev => prev.filter(c => c.id !== id))
