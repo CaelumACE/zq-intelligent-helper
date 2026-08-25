@@ -415,7 +415,16 @@ def list_users(keyword: str = "", page: int = 1, page_size: int = 20) -> dict:
         if keyword:
             query = query.where(User.username.icontains(keyword))
         total = session.scalar(select(func.count()).select_from(query.order_by(None).subquery()))
-        rows = session.execute(query.order_by(User.id).offset((page - 1) * page_size).limit(page_size)).scalars().all()
+        # 排序：管理员在前 → 最近登录时间倒序（从未登录的排最后）→ ID 升序
+        from sqlalchemy import case
+        role_order = case((User.role == "admin", 0), else_=1)
+        rows = session.execute(
+            query.order_by(
+                role_order,
+                User.last_login.desc().nullslast(),
+                User.id.asc(),
+            ).offset((page - 1) * page_size).limit(page_size)
+        ).scalars().all()
         return {"items": [_user_dict(u) for u in rows], "total": total or 0, "page": page, "page_size": page_size}
 
 

@@ -73,7 +73,7 @@ class Settings:
 
     # 会话策略：True=允许同一账号多端同时在线（登录不踢旧token）；False=单点登录（后登录踢前登录）
     # 改密/被禁用/管理员重置密码始终全端失效，不受此开关影响。
-    ALLOW_MULTI_SESSION = os.getenv('ALLOW_MULTI_SESSION', 'true').lower() in ('1', 'true', 'yes', 'on')
+    ALLOW_MULTI_SESSION = os.getenv('ALLOW_MULTI_SESSION', 'false').lower() in ('1', 'true', 'yes', 'on')
 
     # 速率限制：每个来源 IP 在窗口内的最大请求数
     RATE_LIMIT_MAX = int(os.getenv('RATE_LIMIT_MAX', '180'))

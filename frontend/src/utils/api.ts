@@ -2,7 +2,7 @@ const API_BASE = __API_BASE__
 export { API_BASE }
 
 export function authHeaders(): HeadersInit {
-  const token = localStorage.getItem('token')
+  const token = sessionStorage.getItem('token')
   return token ? { Authorization: `Bearer ${token}` } : {}
 }
 
@@ -15,7 +15,7 @@ export function setUnauthorizedHandler(handler: (() => void) | null) {
 /** 统一请求封装：自动携带 Authorization，401 时统一触发登录框。 */
 export async function apiFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
   const headers = new Headers(init.headers || {})
-  const token = localStorage.getItem('token')
+  const token = sessionStorage.getItem('token')
   if (token && !headers.has('Authorization')) {
     headers.set('Authorization', `Bearer ${token}`)
   }

@@ -41,9 +41,9 @@ function App() {
   const [loginOpen, setLoginOpen] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [userAdminOpen, setUserAdminOpen] = useState(false)
-  const [token, setToken] = useState<string | null>(() => localStorage.getItem('token'))
+  const [token, setToken] = useState<string | null>(() => sessionStorage.getItem('token'))
   const [user, setUser] = useState<AuthUser | null>(() => {
-    const raw = localStorage.getItem('user')
+    const raw = sessionStorage.getItem('user')
     return raw ? JSON.parse(raw) : null
   })
   const sessionCacheRef = useRef<Map<string, Message[]>>(new Map())
@@ -54,19 +54,28 @@ function App() {
   const sendingRef = useRef(false)
   const sessionSelectRef = useRef<string | null>(null)
 
-  // 跨标签页同步登录态：A标签登录/登出后，B标签自动跟随
+  // 单点登录检测：每60秒检查当前token是否仍有效，被其他端踢线则自动登出
   useEffect(() => {
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === 'token') {
-        setToken(e.newValue)
-        if (!e.newValue) setUser(null)
-      } else if (e.key === 'user' && e.newValue) {
-        try { setUser(JSON.parse(e.newValue)) } catch { /* ignore */ }
-      }
+    if (!token) return
+    const check = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/auth/me`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        if (res.status === 401) {
+          sessionStorage.removeItem('token')
+          sessionStorage.removeItem('user')
+          setToken(null)
+          setUser(null)
+        }
+      } catch { /* network error, ignore */ }
     }
-    window.addEventListener('storage', onStorage)
-    return () => window.removeEventListener('storage', onStorage)
-  }, [])
+    const timer = setInterval(check, 60000)
+    // 页面可见时也检查一次（从其他标签切回来时）
+    const onVisible = () => { if (document.visibilityState === 'visible') check() }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => { clearInterval(timer); document.removeEventListener('visibilitychange', onVisible) }
+  }, [token])
 
   useEffect(() => {
     loadConversations()
@@ -75,8 +84,8 @@ function App() {
   useEffect(() => {
     if (token) {
       setUnauthorizedHandler(() => {
-        localStorage.removeItem('token')
-        localStorage.removeItem('user')
+        sessionStorage.removeItem('token')
+        sessionStorage.removeItem('user')
         setToken(null)
         setUser(null)
         setLoginOpen(true)
@@ -358,8 +367,8 @@ function App() {
     try {
       await apiFetch(`${API_BASE}/auth/logout`, { method: 'POST' })
     } catch { /* ignore */ }
-    localStorage.removeItem('token')
-    localStorage.removeItem('user')
+    sessionStorage.removeItem('token')
+    sessionStorage.removeItem('user')
     setToken(null)
     setUser(null)
     setMessages([])
@@ -443,8 +452,8 @@ function App() {
       <LoginModal
         fullscreen
         onLogin={(newToken, newUser) => {
-          localStorage.setItem('token', newToken)
-          localStorage.setItem('user', JSON.stringify(newUser))
+          sessionStorage.setItem('token', newToken)
+          sessionStorage.setItem('user', JSON.stringify(newUser))
           setToken(newToken)
           setUser(newUser)
           loadConversations()
@@ -541,8 +550,8 @@ function App() {
           <LoginModal
             onClose={() => setLoginOpen(false)}
             onLogin={(newToken, newUser) => {
-              localStorage.setItem('token', newToken)
-              localStorage.setItem('user', JSON.stringify(newUser))
+              sessionStorage.setItem('token', newToken)
+              sessionStorage.setItem('user', JSON.stringify(newUser))
               setToken(newToken)
               setUser(newUser)
               setLoginOpen(false)
