@@ -107,7 +107,7 @@ export default function UserAdmin({ onClose, currentUserId, currentUserRole }: {
   }
 
   const handleToggleActive = async (u: AdminUser) => {
-    if (u.role === 'super_admin') return
+    if (u.role === 'super_admin' || u.role === 'admin') return
     setActionLoading(u.id)
     try {
       const res = await apiFetch(`${API_BASE}/admin/users/${u.id}`, {
@@ -122,7 +122,7 @@ export default function UserAdmin({ onClose, currentUserId, currentUserRole }: {
   }
 
   const handleToggleRole = async (u: AdminUser) => {
-    if (u.role === 'super_admin') return
+    if (u.role === 'super_admin' || u.role === 'admin') return
     setActionLoading(u.id)
     try {
       const nextRole = u.role === 'admin' ? 'user' : 'admin'
@@ -285,7 +285,7 @@ export default function UserAdmin({ onClose, currentUserId, currentUserRole }: {
                 onChange={(e) => setForm({ ...form, password: e.target.value })} />
               <select className="ua-input" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
                 <option value="user">普通用户</option>
-                <option value="admin">管理员</option>
+                {isSuper && <option value="admin">管理员</option>}
                 {isSuper && <option value="super_admin">超级管理员</option>}
               </select>
               {formError && <div className="ua-error">{formError}</div>}

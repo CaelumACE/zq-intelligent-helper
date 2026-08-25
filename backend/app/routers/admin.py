@@ -54,10 +54,19 @@ def admin_required(user: UserOut = Depends(current_user)) -> UserOut:
     return user
 
 
-def _ensure_not_super_admin(target: dict, action: str = "修改") -> None:
-    """super_admin 账号只能由 super_admin 自己操作，普通管理员不可触碰。"""
-    if target.get("role") == "super_admin":
-        raise HTTPException(status_code=403, detail=f"无权{action}超级管理员账号")
+def _ensure_can_manage(target: dict, current: UserOut, action: str = "修改") -> None:
+    """权限层级：super_admin > admin > user。
+    - 普通管理员只能操作 role=user 的账号，不可触碰其他管理员或超级管理员；
+    - 超级管理员可操作普通管理员和普通用户，但不可操作其他超级管理员；
+    - 任何人不可操作自己（自保护在路由层单独处理）。
+    """
+    target_role = target.get("role", "user")
+    if target_role == "super_admin":
+        if current.role != "super_admin":
+            raise HTTPException(status_code=403, detail=f"无权{action}超级管理员账号")
+    elif target_role == "admin":
+        if current.role != "super_admin":
+            raise HTTPException(status_code=403, detail=f"无权{action}其他管理员账号")
 
 
 @router.get("")
@@ -76,6 +85,8 @@ async def get_users(
 async def create_admin_user(body: AdminUserCreate, user: UserOut = Depends(admin_required)):
     if body.role == "super_admin" and user.role != "super_admin":
         raise HTTPException(status_code=403, detail="仅超级管理员可创建超级管理员账号")
+    if body.role == "admin" and user.role != "super_admin":
+        raise HTTPException(status_code=403, detail="仅超级管理员可创建管理员账号")
     if get_user_by_username(body.username):
         raise HTTPException(status_code=409, detail="用户名已存在")
     try:
@@ -110,8 +121,7 @@ async def reset_admin_password(user_id: int, body: AdminResetPassword, user: Use
     target = get_user(user_id)
     if not target:
         raise HTTPException(status_code=404, detail="用户不存在")
-    if target.get("role") == "super_admin" and user.role != "super_admin":
-        raise HTTPException(status_code=403, detail="无权重置超级管理员密码")
+    _ensure_can_manage(target, user, action="重置")
     item = reset_password(user_id, hash_password(body.new_password))
     return {"message": "密码已重置", "user": item}
 
@@ -121,7 +131,8 @@ async def delete_admin_user(user_id: int, user: UserOut = Depends(admin_required
     target = get_user(user_id)
     if not target:
         raise HTTPException(status_code=404, detail="用户不存在")
-    if target.get("role") == "super_admin":
+    _ensure_can_manage(target, user, action="删除")
+    if target.get("role") == "super_admin" and user.role == "super_admin":
         raise HTTPException(status_code=403, detail="超级管理员账号不可删除")
     if user.id == user_id:
         raise HTTPException(status_code=400, detail="不能删除当前登录的管理员账号")
