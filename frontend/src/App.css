@@ -233,3 +233,19 @@
 .login-fs-mark { width: 56px; height: 56px; border-radius: 14px; background: linear-gradient(135deg, #1e40af, #3b82f6); color: #fff; font-size: 26px; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 12px; }
 .login-fs-title { font-size: 20px; font-weight: 700; color: #111827; }
 .login-fs-sub { font-size: 13px; color: #6b7280; margin-top: 4px; }
+
+.ua-btn-sm.ua-btn-danger {
+  color: #dc2626;
+  border-color: #fca5a5;
+}
+.ua-btn-sm.ua-btn-danger:hover {
+  background: #fef2f2;
+  border-color: #dc2626;
+}
+.ua-btn-primary.ua-btn-danger-bg {
+  background: #dc2626;
+  border-color: #dc2626;
+}
+.ua-btn-primary.ua-btn-danger-bg:hover {
+  background: #b91c1c;
+}

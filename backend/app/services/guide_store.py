@@ -447,6 +447,21 @@ def reset_password(user_id: int, password_hash: str) -> Optional[dict]:
         return _user_dict(user)
 
 
+
+def delete_user(user_id: int) -> bool:
+    """删除用户及其关联的导办进度；返回是否删除成功。"""
+    session_factory = _ensure_engine()
+    with session_factory() as session:
+        user = session.get(User, user_id)
+        if not user:
+            return False
+        # 删除该用户的导办进度（无外键级联，需手动清理）
+        session.query(GuideUserProgress).filter(GuideUserProgress.user_id == user_id).delete(synchronize_session=False)
+        session.delete(user)
+        session.commit()
+        return True
+
+
 def bump_token_version(user_id: int) -> bool:
     session_factory = _ensure_engine()
     with session_factory() as session:

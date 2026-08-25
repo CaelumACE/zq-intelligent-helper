@@ -7,6 +7,7 @@ from app.routers.auth import current_user, UserOut
 from app.services.auth_service import hash_password
 from app.services.guide_store import (
     create_user,
+    delete_user,
     get_user,
     get_user_by_username,
     list_users,
@@ -99,3 +100,15 @@ async def reset_admin_password(user_id: int, body: AdminResetPassword, user: Use
         raise HTTPException(status_code=404, detail="用户不存在")
     item = reset_password(user_id, hash_password(body.new_password))
     return {"message": "密码已重置", "user": item}
+
+
+@router.delete("/{user_id}", status_code=200)
+async def delete_admin_user(user_id: int, user: UserOut = Depends(current_user)):
+    _require_admin(user)
+    target = get_user(user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    if user.id == user_id:
+        raise HTTPException(status_code=400, detail="不能删除当前登录的管理员账号")
+    delete_user(user_id)
+    return {"message": "用户已删除"}

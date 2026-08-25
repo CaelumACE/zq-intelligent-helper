@@ -31,6 +31,7 @@ export default function UserAdmin({ onClose }: { onClose: () => void }) {
   const [resetTarget, setResetTarget] = useState<AdminUser | null>(null)
   const [newPwd, setNewPwd] = useState('')
   const [actionLoading, setActionLoading] = useState<number | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<AdminUser | null>(null)
 
   const pageSize = 20
 
@@ -121,6 +122,22 @@ export default function UserAdmin({ onClose }: { onClose: () => void }) {
     }
   }
 
+  const handleDelete = async () => {
+    if (!deleteTarget) return
+    setActionLoading(deleteTarget.id)
+    try {
+      const res = await apiFetch(`${API_BASE}/admin/users/${deleteTarget.id}`, {
+        method: 'DELETE',
+      })
+      if (res.ok) {
+        setDeleteTarget(null)
+        load()
+      }
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
   return (
     <div className="ua-overlay" onClick={onClose}>
       <div className="ua-panel" onClick={(e) => e.stopPropagation()}>
@@ -192,6 +209,13 @@ export default function UserAdmin({ onClose }: { onClose: () => void }) {
                     >
                       重置密码
                     </button>
+                    <button
+                      className="ua-btn-sm ua-btn-danger"
+                      disabled={actionLoading === u.id}
+                      onClick={() => setDeleteTarget(u)}
+                    >
+                      删除
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -262,6 +286,27 @@ export default function UserAdmin({ onClose }: { onClose: () => void }) {
                   onClick={handleResetPwd}
                 >
                   确认重置
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {deleteTarget && (
+          <div className="ua-modal-mask" onClick={() => setDeleteTarget(null)}>
+            <div className="ua-modal" onClick={(e) => e.stopPropagation()}>
+              <h3>删除用户</h3>
+              <p style={{ margin: '12px 0', color: '#6b7280' }}>
+                确定要删除用户「{deleteTarget.username}」吗？此操作不可恢复，该用户的导办进度也会一并清除。
+              </p>
+              <div className="ua-modal-actions">
+                <button className="ua-btn-sm" onClick={() => setDeleteTarget(null)}>取消</button>
+                <button
+                  className="ua-btn-primary ua-btn-danger-bg"
+                  disabled={actionLoading === deleteTarget.id}
+                  onClick={handleDelete}
+                >
+                  {actionLoading === deleteTarget.id ? '删除中…' : '确认删除'}
                 </button>
               </div>
             </div>
