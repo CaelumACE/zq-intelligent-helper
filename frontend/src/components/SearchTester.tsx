@@ -33,7 +33,7 @@ export default function SearchTester() {
       {error && <div className="compare-error">{error}</div>}
       {results.map((r) => (
         <div key={r.id} className="search-tester-item">
-          <div className="search-tester-head"><span>{r.title}</span><span className="search-tester-score">{(r.score * 100).toFixed(1)}%</span></div>
+          <div className="search-tester-head"><span>{r.title}</span><span className="search-tester-score">{r.score.toFixed(1)}%</span></div>
           <div className="search-tester-snippet">{r.snippet}</div>
         </div>
       ))}
