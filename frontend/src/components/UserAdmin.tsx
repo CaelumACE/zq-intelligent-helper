@@ -52,8 +52,8 @@ export default function UserAdmin({ onClose, currentUserId, currentUserRole }: {
 
   const isSuper = currentUserRole === 'super_admin'
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true)
     setError('')
     try {
       const res = await apiFetch(`${API_BASE}/admin/users?page=${page}&page_size=${pageSize}&keyword=${encodeURIComponent(keyword)}`)
@@ -78,8 +78,8 @@ export default function UserAdmin({ onClose, currentUserId, currentUserRole }: {
 
   const canModify = (u: AdminUser): boolean => {
     if (actionLoading === u.id) return false
-    // 超级管理员账号：只有自己能操作（且仅部分操作），其他管理员不可触碰
-    if (u.role === 'super_admin' && !isSuper) return false
+    if (u.role === 'super_admin') return false
+    if (u.role === 'admin' && !isSuper) return false
     return true
   }
 
@@ -98,7 +98,7 @@ export default function UserAdmin({ onClose, currentUserId, currentUserRole }: {
       setShowCreate(false)
       setForm({ username: '', password: '', role: 'user' })
       setPage(1)
-      load()
+      load(true)
     } catch {
       setFormError('网络异常')
     } finally {
@@ -115,7 +115,7 @@ export default function UserAdmin({ onClose, currentUserId, currentUserRole }: {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ is_active: !u.is_active }),
       })
-      if (res.ok) load()
+      if (res.ok) load(true)
     } finally {
       setActionLoading(null)
     }
@@ -131,7 +131,7 @@ export default function UserAdmin({ onClose, currentUserId, currentUserRole }: {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ role: nextRole }),
       })
-      if (res.ok) load()
+      if (res.ok) load(true)
     } finally {
       setActionLoading(null)
     }
@@ -161,7 +161,7 @@ export default function UserAdmin({ onClose, currentUserId, currentUserRole }: {
       })
       if (res.ok) {
         setDeleteTarget(null)
-        load()
+        load(true)
       }
     } finally {
       setActionLoading(null)
@@ -228,7 +228,9 @@ export default function UserAdmin({ onClose, currentUserId, currentUserRole }: {
                     <td>{u.last_login ? new Date(u.last_login).toLocaleString('zh-CN') : '—'}</td>
                     <td className="ua-actions">
                       {isSuperRow ? (
-                        <span style={{ color: '#d97706', fontSize: 12 }}>🔒 受保护账号</span>
+                        <span style={{ color: '#d97706', fontSize: 12 }}>🔒 超级管理员受保护</span>
+                      ) : u.role === 'admin' && !isSuper ? (
+                        <span style={{ color: '#9ca3af', fontSize: 12 }}>🔒 管理员账号不可操作</span>
                       ) : (
                         <>
                           <button className="ua-btn-sm" disabled={locked || isSelf} onClick={() => handleToggleActive(u)}>
