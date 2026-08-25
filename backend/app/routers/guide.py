@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 from app.routers.auth import bearer
 from app.services.auth_service import decode_token
-from app.services.guide_store import get_progress, roadmap_from_db, set_progress, themes_from_db
+from app.services.guide_store import get_progress, get_user, roadmap_from_db, set_progress, themes_from_db
 from app.services.llm_service import LLMService
 
 router = APIRouter()
@@ -27,7 +27,15 @@ def current_user_id(credentials: HTTPAuthorizationCredentials | None = Depends(b
     payload = decode_token(credentials.credentials)
     if payload is None:
         raise HTTPException(status_code=401, detail="登录已过期，请重新登录")
-    return int(payload.get("sub", 0))
+    user_id = int(payload.get("sub", 0))
+    user = get_user(user_id)
+    if not user:
+        raise HTTPException(status_code=401, detail="用户不存在")
+    if not user.get("is_active", True):
+        raise HTTPException(status_code=401, detail="账号已禁用，请联系管理员")
+    if int(payload.get("tv", 0)) != int(user.get("token_version", 0)):
+        raise HTTPException(status_code=401, detail="登录已过期，请重新登录")
+    return user_id
 
 
 def _theme_list():

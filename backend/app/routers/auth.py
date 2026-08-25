@@ -9,6 +9,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 
+from app.core.config import settings
 from app.services.auth_service import create_token, decode_token, hash_password, verify_password
 from app.services.guide_store import (
     User,
@@ -152,10 +153,13 @@ async def login(body: LoginRequest, request: Request):
         raise HTTPException(status_code=401, detail="账号已禁用，请联系管理员")
 
     _clear_login_failure(client_ip, username_key)
-    # 每次登录都递增版本号，使旧 token 立即失效，实现单点登录踢线。
-    new_version = int(user.get("token_version", 0)) + 1
-    bump_token_version(user["id"])
-    user["token_version"] = new_version
+    # 多端在线模式：不递增版本号，新旧 token 都有效；单点模式：递增踢掉旧 token。
+    if settings.ALLOW_MULTI_SESSION:
+        new_version = int(user.get("token_version", 0))
+    else:
+        new_version = int(user.get("token_version", 0)) + 1
+        bump_token_version(user["id"])
+        user["token_version"] = new_version
     set_last_login(user["id"], datetime.now(timezone.utc))
     return {"token": create_token(user["id"], user["username"], user["role"], new_version), "user": user}
 

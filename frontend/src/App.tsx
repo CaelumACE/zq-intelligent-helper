@@ -54,6 +54,20 @@ function App() {
   const sendingRef = useRef(false)
   const sessionSelectRef = useRef<string | null>(null)
 
+  // 跨标签页同步登录态：A标签登录/登出后，B标签自动跟随
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'token') {
+        setToken(e.newValue)
+        if (!e.newValue) setUser(null)
+      } else if (e.key === 'user' && e.newValue) {
+        try { setUser(JSON.parse(e.newValue)) } catch { /* ignore */ }
+      }
+    }
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
+  }, [])
+
   useEffect(() => {
     loadConversations()
   }, [token])

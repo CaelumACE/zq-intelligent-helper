@@ -47,9 +47,11 @@ class AdminResetPassword(BaseModel):
         return value
 
 
-def _require_admin(user: UserOut) -> None:
+def admin_required(user: UserOut = Depends(current_user)) -> UserOut:
+    """管理员权限依赖：非 admin 一律返回 404，且在 body 校验之前执行。"""
     if user.role != "admin":
         raise HTTPException(status_code=404, detail="资源不存在")
+    return user
 
 
 @router.get("")
@@ -57,17 +59,15 @@ async def get_users(
     page: int = 1,
     page_size: int = 20,
     keyword: str = "",
-    user: UserOut = Depends(current_user),
+    user: UserOut = Depends(admin_required),
 ):
-    _require_admin(user)
     page = max(page, 1)
     page_size = min(max(page_size, 1), 100)
     return list_users(keyword=keyword, page=page, page_size=page_size)
 
 
 @router.post("", status_code=201)
-async def create_admin_user(body: AdminUserCreate, user: UserOut = Depends(current_user)):
-    _require_admin(user)
+async def create_admin_user(body: AdminUserCreate, user: UserOut = Depends(admin_required)):
     if get_user_by_username(body.username):
         raise HTTPException(status_code=409, detail="用户名已存在")
     try:
@@ -78,8 +78,7 @@ async def create_admin_user(body: AdminUserCreate, user: UserOut = Depends(curre
 
 
 @router.put("/{user_id}")
-async def update_admin_user(user_id: int, body: AdminUserUpdate, user: UserOut = Depends(current_user)):
-    _require_admin(user)
+async def update_admin_user(user_id: int, body: AdminUserUpdate, user: UserOut = Depends(admin_required)):
     target = get_user(user_id)
     if not target:
         raise HTTPException(status_code=404, detail="用户不存在")
@@ -93,8 +92,7 @@ async def update_admin_user(user_id: int, body: AdminUserUpdate, user: UserOut =
 
 
 @router.post("/{user_id}/reset-password")
-async def reset_admin_password(user_id: int, body: AdminResetPassword, user: UserOut = Depends(current_user)):
-    _require_admin(user)
+async def reset_admin_password(user_id: int, body: AdminResetPassword, user: UserOut = Depends(admin_required)):
     target = get_user(user_id)
     if not target:
         raise HTTPException(status_code=404, detail="用户不存在")
@@ -103,8 +101,7 @@ async def reset_admin_password(user_id: int, body: AdminResetPassword, user: Use
 
 
 @router.delete("/{user_id}", status_code=200)
-async def delete_admin_user(user_id: int, user: UserOut = Depends(current_user)):
-    _require_admin(user)
+async def delete_admin_user(user_id: int, user: UserOut = Depends(admin_required)):
     target = get_user(user_id)
     if not target:
         raise HTTPException(status_code=404, detail="用户不存在")
