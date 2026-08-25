@@ -24,6 +24,18 @@ function App() {
   const [currentView, setCurrentView] = useState<'chat' | 'home'>('home')
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [model, setModel] = useState<ModelProvider>('minimax')
+
+  // 方案A：启动时从后端/health读取实际LLM provider，动态设置默认模型
+  useEffect(() => {
+    fetch(`${API_BASE}/health`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data?.llm_provider === 'deepseek' || data?.llm_provider === 'minimax') {
+          setModel(data.llm_provider)
+        }
+      })
+      .catch(() => {})
+  }, [])
   const [writingOpen, setWritingOpen] = useState(false)
   const [activePanel, setActivePanel] = useState<'qa' | 'guide' | 'compare'>('qa')
   const [loginOpen, setLoginOpen] = useState(false)
