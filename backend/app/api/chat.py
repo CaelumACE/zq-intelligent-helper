@@ -404,7 +404,6 @@ async def chat(request: ChatRequest, user: UserOut = Depends(current_user)):
             retrieval_time = 0.0
             generation_time = 0.0
             references = []
-            session_id = _resolve_session_id(request, user_id=user_id)
             user_msg = {"role": "user", "content": request.message, "timestamp": int(time.time() * 1000)}
             assistant_msg = {"role": "assistant", "content": content, "references": references, "timestamp": int(time.time() * 1000)}
             session_store.add_messages(session_id, [user_msg, assistant_msg], user_id=user_id)
