@@ -185,6 +185,25 @@ def ensure_demo_user():
         logger.warning(f"预置 demo 用户失败: {exc}")
 
 
+def ensure_admin_user():
+    """预置后台管理员 admin / admin123，role=admin。"""
+    try:
+        from app.services.auth_service import hash_password, verify_password
+
+        factory = get_session_factory()
+        with factory() as session:
+            exists = session.execute(select(User).where(User.username == "admin")).scalar_one_or_none()
+            if not exists:
+                session.add(User(username="admin", password_hash=hash_password("admin123"), role="admin"))
+                session.commit()
+            elif exists.role != "admin" or not verify_password("admin123", exists.password_hash):
+                exists.role = "admin"
+                exists.password_hash = hash_password("admin123")
+                session.commit()
+    except Exception as exc:
+        logger.warning(f"预置 admin 用户失败: {exc}")
+
+
 def themes_from_db() -> List[Dict[str, Any]]:
     """DB 优先，失败回退 JSON。"""
     try:

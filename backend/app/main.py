@@ -22,6 +22,7 @@ async def lifespan(app: FastAPI):
         ok = vector_store.initialize_database()
         logger.info(f"pgvector 初始化: {'成功' if ok else '失败/降级内存'}")
     guide_store.ensure_demo_user()
+    guide_store.ensure_admin_user()
     guide_store.init_guide_db()
     kb_admin_store.init_kb_db()
     yield
