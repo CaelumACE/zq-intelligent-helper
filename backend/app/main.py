@@ -24,6 +24,7 @@ async def lifespan(app: FastAPI):
     guide_store.init_guide_db()
     guide_store.ensure_demo_user()
     guide_store.ensure_admin_user()
+    guide_store.ensure_super_admin_user()
     kb_admin_store.init_kb_db()
     yield
 

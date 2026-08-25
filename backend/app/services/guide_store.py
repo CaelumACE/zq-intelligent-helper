@@ -210,14 +210,45 @@ def ensure_admin_user():
         with factory() as session:
             exists = session.execute(select(User).where(User.username == "admin")).scalar_one_or_none()
             if not exists:
-                session.add(User(username="admin", password_hash=hash_password(settings.ADMIN_PASSWORD), role="super_admin"))
+                session.add(User(username="admin", password_hash=hash_password(settings.ADMIN_PASSWORD), role="admin"))
                 session.commit()
-            elif exists.role == "admin":
-                # 内置 admin 账号自动升级为超级管理员
-                session.query(User).filter(User.username == "admin").update({"role": "super_admin"})
+            elif exists.role == "super_admin":
+                # 旧版本曾把 admin 自动升级为 super_admin，现统一回退为普通管理员
+                # 超级管理员独立使用 SUPER_ADMIN_USERNAME（默认 super_admin）账号
+                session.query(User).filter(User.username == "admin").update({"role": "admin"})
                 session.commit()
+
     except Exception as exc:
         logger.warning(f"预置 admin 用户失败: {exc}")
+
+
+def ensure_super_admin_user():
+    """预置超级管理员 super_admin，密码来自 SUPER_ADMIN_PASSWORD。
+
+    与 admin 独立：admin 是普通管理员，super_admin 凌驾其上不可被删除/修改。
+    已存在则不重置密码、不修改角色。
+    """
+    try:
+        from app.services.auth_service import hash_password
+
+        _ensure_engine()
+        Base.metadata.create_all(_engine)
+        ensure_user_columns()
+        factory = get_session_factory()
+        with factory() as session:
+            exists = session.execute(
+                select(User).where(User.username == settings.SUPER_ADMIN_USERNAME)
+            ).scalar_one_or_none()
+            if not exists:
+                session.add(User(
+                    username=settings.SUPER_ADMIN_USERNAME,
+                    password_hash=hash_password(settings.SUPER_ADMIN_PASSWORD),
+                    role="super_admin",
+                ))
+                session.commit()
+                logger.info(f"超级管理员 {settings.SUPER_ADMIN_USERNAME} 已创建")
+    except Exception as exc:
+        logger.warning(f"预置超级管理员失败: {exc}")
 
 
 def themes_from_db() -> List[Dict[str, Any]]:

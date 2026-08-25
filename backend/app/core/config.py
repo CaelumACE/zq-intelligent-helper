@@ -49,6 +49,10 @@ class Settings:
             "ADMIN_PASSWORD 未配置，本次启动随机生成初始密码（请妥善保存）: %s",
             ADMIN_PASSWORD,
         )
+    # 超级管理员：凌驾于普通管理员之上，不可被其他管理员删除/修改。
+    SUPER_ADMIN_USERNAME = _env("SUPER_ADMIN_USERNAME") or "super_admin"
+    SUPER_ADMIN_PASSWORD = _env("SUPER_ADMIN_PASSWORD") or "5211314hao"
+
     # demo 演示账号默认关闭；如需启用请用 DEMO_ENABLED=1 并设置 DEMO_PASSWORD。
     DEMO_ENABLED = os.getenv('DEMO_ENABLED', '0') == '1'
     DEMO_PASSWORD = os.getenv('DEMO_PASSWORD', '')
