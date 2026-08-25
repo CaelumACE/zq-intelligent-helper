@@ -23,7 +23,7 @@ function App() {
   const [isStreaming, setIsStreaming] = useState(false)
   const [currentView, setCurrentView] = useState<'chat' | 'home'>('home')
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [model, setModel] = useState<ModelProvider>('deepseek')
+  const [model, setModel] = useState<ModelProvider>('minimax')
   const [writingOpen, setWritingOpen] = useState(false)
   const [activePanel, setActivePanel] = useState<'qa' | 'guide' | 'compare'>('qa')
   const [loginOpen, setLoginOpen] = useState(false)
@@ -44,7 +44,7 @@ function App() {
 
   useEffect(() => {
     loadConversations()
-  }, [])
+  }, [token])
 
   useEffect(() => {
     if (token) {
@@ -536,7 +536,7 @@ function App() {
         />
 
         {userAdminOpen && (
-          <UserAdmin onClose={() => setUserAdminOpen(false)} />
+          <UserAdmin onClose={() => setUserAdminOpen(false)} currentUserId={user?.id ?? null} />
         )}
       </div>
     </div>

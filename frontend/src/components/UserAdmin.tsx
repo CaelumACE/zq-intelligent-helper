@@ -17,7 +17,7 @@ interface UsersResponse {
   page_size: number
 }
 
-export default function UserAdmin({ onClose }: { onClose: () => void }) {
+export default function UserAdmin({ onClose, currentUserId }: { onClose: () => void; currentUserId: number | null }) {
   const [users, setUsers] = useState<AdminUser[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -211,7 +211,8 @@ export default function UserAdmin({ onClose }: { onClose: () => void }) {
                     </button>
                     <button
                       className="ua-btn-sm ua-btn-danger"
-                      disabled={actionLoading === u.id}
+                      disabled={actionLoading === u.id || u.id === currentUserId}
+                      title={u.id === currentUserId ? '不能删除当前登录账号' : ''}
                       onClick={() => setDeleteTarget(u)}
                     >
                       删除
