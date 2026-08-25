@@ -107,7 +107,8 @@ export default function UserAdmin({ onClose, currentUserId, currentUserRole }: {
   }
 
   const handleToggleActive = async (u: AdminUser) => {
-    if (u.role === 'super_admin' || u.role === 'admin') return
+    if (u.role === 'super_admin') return
+    if (u.role === 'admin' && !isSuper) return
     setActionLoading(u.id)
     try {
       const res = await apiFetch(`${API_BASE}/admin/users/${u.id}`, {
@@ -122,7 +123,8 @@ export default function UserAdmin({ onClose, currentUserId, currentUserRole }: {
   }
 
   const handleToggleRole = async (u: AdminUser) => {
-    if (u.role === 'super_admin' || u.role === 'admin') return
+    if (u.role === 'super_admin') return
+    if (u.role === 'admin' && !isSuper) return
     setActionLoading(u.id)
     try {
       const nextRole = u.role === 'admin' ? 'user' : 'admin'
