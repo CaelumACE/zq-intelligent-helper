@@ -165,6 +165,12 @@ async def test_search(query: str, top_k: int = 8, user=Depends(current_user)):
 
     try:
         results = knowledge_service.search(query, top_k=min(top_k, 20))
+        if results:
+            max_score = max(float(r.get("score", 0)) for r in results)
+            min_score = min(float(r.get("score", 0)) for r in results)
+            score_range = max_score - min_score if max_score > min_score else 1.0
+        else:
+            max_score = min_score = score_range = 1.0
         return {
             "results": [
                 {
@@ -172,7 +178,7 @@ async def test_search(query: str, top_k: int = 8, user=Depends(current_user)):
                     "title": r.get("title"),
                     "snippet": r.get("snippet") or "",
                     "source": r.get("source") or "",
-                    "score": round(float(r.get("score", 0)), 4),
+                    "score": round((float(r.get("score", 0)) - min_score) / score_range * 100, 1),
                 }
                 for r in results
                 if r.get("snippet")
