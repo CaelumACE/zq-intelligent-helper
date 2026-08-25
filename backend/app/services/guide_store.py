@@ -466,10 +466,16 @@ def update_user(user_id: int, role: str | None = None, is_active: bool | None = 
         user = session.get(User, user_id)
         if not user:
             return None
-        if role is not None:
+        state_changed = False
+        if role is not None and role != user.role:
             user.role = role
-        if is_active is not None:
+            state_changed = True
+        if is_active is not None and is_active != user.is_active:
             user.is_active = is_active
+            state_changed = True
+        # 角色变更或启/禁用均递增 token_version，使旧 token 立即失效
+        if state_changed:
+            user.token_version = int(user.token_version or 0) + 1
         session.commit()
         session.refresh(user)
         return _user_dict(user)
@@ -490,7 +496,7 @@ def reset_password(user_id: int, password_hash: str) -> Optional[dict]:
 
 
 def delete_user(user_id: int) -> bool:
-    """删除用户及其关联的导办进度；返回是否删除成功。"""
+    """删除用户及其关联数据（导办进度、聊天会话）；返回是否删除成功。"""
     session_factory = _ensure_engine()
     with session_factory() as session:
         user = session.get(User, user_id)
@@ -500,7 +506,15 @@ def delete_user(user_id: int) -> bool:
         session.query(GuideUserProgress).filter(GuideUserProgress.user_id == user_id).delete(synchronize_session=False)
         session.delete(user)
         session.commit()
-        return True
+    # 清理该用户的聊天会话（独立存储，事务外删除，失败不阻断用户删除）
+    try:
+        from app.services.session_store import session_store
+        removed = session_store.delete_by_user(user_id)
+        if removed:
+            logger.info(f"已清理用户 {user_id} 的 {removed} 条聊天会话")
+    except Exception as exc:
+        logger.warning(f"清理用户 {user_id} 聊天会话失败: {exc}")
+    return True
 
 
 def bump_token_version(user_id: int) -> bool:

@@ -327,5 +327,32 @@ class SessionStore:
             return True
         return False
 
+    def delete_by_user(self, user_id) -> int:
+        """删除指定用户的全部会话，返回删除条数。"""
+        uid = self._user_id_label(user_id)
+        if uid is None:
+            return 0
+        if self._sql_ready:
+            try:
+                with self._ensure_engine().begin() as conn:
+                    result = conn.execute(
+                        text("DELETE FROM chat_sessions WHERE user_id = :uid"),
+                        {"uid": uid},
+                    )
+                    return int(result.rowcount or 0)
+            except Exception as exc:
+                logger.warning(f"按用户删除会话失败: {exc}")
+                return 0
+        # JSON 回退模式
+        before = len(self._sessions)
+        self._sessions = {
+            sid: s for sid, s in self._sessions.items()
+            if s.get("user_id") != uid
+        }
+        removed = before - len(self._sessions)
+        if removed:
+            self._save_json()
+        return removed
+
 
 session_store = SessionStore()
