@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import Icon from './Icons'
-import type { Conversation } from '../types'
+import type { Conversation, AuthUser } from '../types'
 
 interface SidebarProps {
   conversations: Conversation[]
@@ -8,6 +8,9 @@ interface SidebarProps {
   onNewChat: () => void
   onSelectConversation: (id: string) => void
   onDeleteConversation: (id: string, e: React.MouseEvent) => void
+  deletingId?: string | null
+  user?: AuthUser | null
+  onOpenUserAdmin?: () => void
 }
 
 interface Group {
@@ -44,6 +47,9 @@ export default function Sidebar({
   onNewChat,
   onSelectConversation,
   onDeleteConversation,
+  deletingId,
+  user,
+  onOpenUserAdmin,
 }: SidebarProps) {
   const groups = useMemo(() => groupByDate(conversations), [conversations])
 
@@ -69,24 +75,28 @@ export default function Sidebar({
               <div className="g-title">{group.title}</div>
               {group.items.map((conv) => {
                 const active = conv.id === currentSessionId
+                const isDeleting = deletingId === conv.id
                 return (
                   <div key={conv.id} className="conv-item-row group">
                     <button
-                      onClick={() => onSelectConversation(conv.id)}
+                      onClick={() => !isDeleting && onSelectConversation(conv.id)}
                       className={`conv-item ${active ? 'active' : ''}`}
+                      disabled={isDeleting}
+                      style={isDeleting ? { opacity: 0.5 } : undefined}
                     >
                       <span className="conv-item-text">{conv.title || '新对话'}</span>
                       <span
                         className="conv-del"
                         role="button"
                         tabIndex={0}
-                        title="删除会话"
-                        onClick={(e) => onDeleteConversation(conv.id, e)}
+                        title={isDeleting ? '删除中…' : '删除会话'}
+                        onClick={(e) => { if (!isDeleting) onDeleteConversation(conv.id, e) }}
                         onKeyDown={(e) => {
-                          if (e.key === 'Enter') onDeleteConversation(conv.id, e as unknown as React.MouseEvent)
+                          if (!isDeleting && e.key === 'Enter') onDeleteConversation(conv.id, e as unknown as React.MouseEvent)
                         }}
+                        style={isDeleting ? { pointerEvents: 'none', opacity: 0.4 } : undefined}
                       >
-                        <Icon name="x" size={14} />
+                        {isDeleting ? '…' : <Icon name="x" size={14} />}
                       </span>
                     </button>
                   </div>
@@ -97,7 +107,23 @@ export default function Sidebar({
         )}
       </div>
 
-      <div className="side-foot">👤 演示模式 · 无需登录</div>
+      <div className="side-foot">
+        {user ? (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+            <span>👤 {user.username}{user.role === 'admin' ? '（管理员）' : ''}</span>
+            {user.role === 'admin' && onOpenUserAdmin && (
+              <button
+                onClick={onOpenUserAdmin}
+                style={{ background: 'none', border: '1px solid rgba(255,255,255,0.3)', color: 'inherit', fontSize: 11, padding: '2px 8px', borderRadius: 4, cursor: pointer }}
+              >
+                用户管理
+              </button>
+            )}
+          </div>
+        ) : (
+          <span>未登录</span>
+        )}
+      </div>
     </aside>
   )
 }

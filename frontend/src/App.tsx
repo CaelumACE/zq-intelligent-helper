@@ -7,6 +7,7 @@ import WelcomeScreen from './components/WelcomeScreen'
 import WritingPanel from './components/WritingPanel'
 import GuidePanel from './components/GuidePanel'
 import LoginModal from './components/LoginModal'
+import UserAdmin from './components/UserAdmin'
 import ComparePanel from './components/ComparePanel'
 import { apiFetch, setUnauthorizedHandler } from './utils/api'
 import type { AuthUser, Message, Conversation, Reference, ModelProvider, WritingRequest } from './types'
@@ -26,6 +27,8 @@ function App() {
   const [writingOpen, setWritingOpen] = useState(false)
   const [activePanel, setActivePanel] = useState<'qa' | 'guide' | 'compare'>('qa')
   const [loginOpen, setLoginOpen] = useState(false)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [userAdminOpen, setUserAdminOpen] = useState(false)
   const [token, setToken] = useState<string | null>(() => localStorage.getItem('token'))
   const [user, setUser] = useState<AuthUser | null>(() => {
     const raw = localStorage.getItem('user')
@@ -321,10 +324,14 @@ function App() {
     setSidebarOpen(false)
   }
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     abortActiveRequest()
     setIsLoading(false)
     setIsStreaming(false)
+    // 通知后端使当前 token 失效
+    try {
+      await apiFetch(`${API_BASE}/auth/logout`, { method: 'POST' })
+    } catch { /* ignore */ }
     localStorage.removeItem('token')
     localStorage.removeItem('user')
     setToken(null)
@@ -381,21 +388,43 @@ function App() {
   const handleDeleteConversation = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation()
     e.preventDefault()
+    if (deletingId) return // 防竞态：有删除进行中时拒绝新请求
+    setDeletingId(id)
     sessionCacheRef.current.delete(id)
 
     // 先在本地点掉侧栏条目，再发请求，避免等 DELETE 响应 + 列表重载造成的延迟
+    const prevConversations = conversations
     setConversations(prev => prev.filter(c => c.id !== id))
     if (id === currentSessionId) {
       handleNewChat()
     }
 
     try {
-      await apiFetch(`${API_BASE}/chat/sessions/${id}`, { method: 'DELETE' })
+      const res = await apiFetch(`${API_BASE}/chat/sessions/${id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
     } catch (err) {
       console.error('删除会话失败', err)
-      // 删除请求失败时重载一次，恢复真实会话列表
-      loadConversations()
+      // 失败回滚 UI
+      setConversations(prevConversations)
+    } finally {
+      setDeletingId(null)
     }
+  }
+
+  // S03-8: 全局登录守卫——未登录只渲染全屏登录页
+  if (!token) {
+    return (
+      <LoginModal
+        fullscreen
+        onLogin={(newToken, newUser) => {
+          localStorage.setItem('token', newToken)
+          localStorage.setItem('user', JSON.stringify(newUser))
+          setToken(newToken)
+          setUser(newUser)
+          loadConversations()
+        }}
+      />
+    )
   }
 
   return (
@@ -408,6 +437,9 @@ function App() {
           onNewChat={handleNewChat}
           onSelectConversation={handleSelectConversation}
           onDeleteConversation={handleDeleteConversation}
+          deletingId={deletingId}
+          user={user}
+          onOpenUserAdmin={() => setUserAdminOpen(true)}
         />
       </div>
 
@@ -422,6 +454,9 @@ function App() {
           onNewChat={handleNewChat}
           onSelectConversation={handleSelectConversation}
           onDeleteConversation={handleDeleteConversation}
+          deletingId={deletingId}
+          user={user}
+          onOpenUserAdmin={() => setUserAdminOpen(true)}
         />
       </div>
 
@@ -499,6 +534,10 @@ function App() {
             handleSendMessage(prompt, writing)
           }}
         />
+
+        {userAdminOpen && (
+          <UserAdmin onClose={() => setUserAdminOpen(false)} />
+        )}
       </div>
     </div>
   )
