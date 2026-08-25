@@ -114,7 +114,7 @@ export default function Sidebar({
             {user.role === 'admin' && onOpenUserAdmin && (
               <button
                 onClick={onOpenUserAdmin}
-                style={{ background: 'none', border: '1px solid rgba(255,255,255,0.3)', color: 'inherit', fontSize: 11, padding: '2px 8px', borderRadius: 4, cursor: pointer }}
+                style={{ background: 'none', border: '1px solid rgba(255,255,255,0.3)', color: 'inherit', fontSize: 11, padding: '2px 8px', borderRadius: 4, cursor: 'pointer' }}
               >
                 用户管理
               </button>
