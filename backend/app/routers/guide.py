@@ -50,12 +50,12 @@ def _match_keywords(query: str):
 
 
 @router.get("/themes")
-async def list_themes():
+async def list_themes(user_id: int = Depends(current_user_id)):
     return {"themes": _theme_list()}
 
 
 @router.post("/match")
-async def match_theme(body: MatchRequest):
+async def match_theme(body: MatchRequest, user_id: int = Depends(current_user_id)):
     hits = _match_keywords(body.query)
     if len(hits) == 1:
         theme_id = hits[0]["id"]
@@ -122,7 +122,7 @@ async def _llm_match(query: str):
 
 
 @router.get("/theme/{theme_id}/roadmap")
-async def get_roadmap(theme_id: str):
+async def get_roadmap(theme_id: str, user_id: int = Depends(current_user_id)):
     roadmap = roadmap_from_db(theme_id)
     if not roadmap:
         raise HTTPException(status_code=404, detail="主题不存在")
