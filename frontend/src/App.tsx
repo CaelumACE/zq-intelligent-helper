@@ -317,6 +317,7 @@ function App() {
     sessionCacheRef.current.clear()
     setCurrentSessionId(null)
     setCurrentView('home')
+    setActivePanel('qa')
     setSidebarOpen(false)
   }
 
