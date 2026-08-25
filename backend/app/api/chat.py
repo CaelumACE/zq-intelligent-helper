@@ -267,12 +267,16 @@ def _resolve_session_id(request: ChatRequest, user_id=None) -> str:
     session_id = request.session_id
     if not session_id:
         return session_store.create(user_id=user_id)["id"]
-    if session_store.get(session_id, user_id=user_id):
+    existing = session_store.get(session_id)
+    if existing and existing.get("user_id") == user_id:
         return session_id
-    # 客户端已提供 sid 但服务端还未建会话：以客户端 sid 落库，
-    # 否则后续带同一 sid 的追问会查不到历史，导致追问被当成独立问题。
+    # 客户端 sid 不存在时才复用客户端 sid 落库；若该 sid 属于其他账号，
+    # 不能以原 sid 覆盖写入，否则会造成跨账号会话接管，改为新建会话。
     try:
-        return session_store.create(session_id=session_id, user_id=user_id)["id"]
+        return session_store.create(
+            session_id=None if existing else session_id,
+            user_id=user_id,
+        )["id"]
     except ValueError:
         # 极小概率并发创建同 sid，直接复用既有会话即可
         return session_id
