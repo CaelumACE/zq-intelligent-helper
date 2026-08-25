@@ -4,10 +4,9 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
-from app.services.auth_service import create_token, decode_token, hash_password, verify_password
+from app.services.auth_service import create_token, decode_token, verify_password
 from app.services.guide_store import (
     User,
-    create_user,
     get_session_factory,
     get_user,
     get_user_by_username,
@@ -55,11 +54,8 @@ def current_user(credentials: HTTPAuthorizationCredentials | None = Depends(bear
 
 @router.post("/register", response_model=dict)
 async def register(body: RegisterRequest):
-    if get_user_by_username(body.username):
-        raise HTTPException(status_code=409, detail="用户名已存在")
-    user = create_user(body.username, hash_password(body.password))
-    token = create_token(user["id"], user["username"], user["role"])
-    return {"token": token, "user": user}
+    # 产品化前关闭公开注册；内部账号由管理员/启动 seed 创建。
+    raise HTTPException(status_code=410, detail="当前关闭公开注册，如需账号请联系管理员")
 
 
 @router.post("/login", response_model=dict)

@@ -165,40 +165,47 @@ def get_session_factory() -> sessionmaker:
 
 
 def ensure_demo_user():
-    """预置测试账号 demo / demo123，不存在则创建，存在则修复旧哈希。"""
+    """预置演示账号（默认关闭）。
+
+    只有显式开启 DEMO_ENABLED 时才创建 demo。已存在的用户不做任何覆盖，
+    避免容器每次重启把密码或角色重置回来。
+    """
     try:
         from app.services.auth_service import hash_password
 
+        if not settings.DEMO_ENABLED or not settings.DEMO_PASSWORD:
+            return
+        _ensure_engine()
+        Base.metadata.create_all(_engine)
         factory = get_session_factory()
         with factory() as session:
             exists = session.execute(select(User).where(User.username == "demo")).scalar_one_or_none()
             if not exists:
-                session.add(User(username="demo", password_hash=hash_password("demo123"), role="user"))
+                session.add(User(username="demo", password_hash=hash_password(settings.DEMO_PASSWORD), role="user"))
                 session.commit()
-            else:
-                from app.services.auth_service import verify_password
-
-                if not verify_password("demo123", exists.password_hash):
-                    exists.password_hash = hash_password("demo123")
-                    session.commit()
     except Exception as exc:
         logger.warning(f"预置 demo 用户失败: {exc}")
 
 
 def ensure_admin_user():
-    """预置后台管理员 admin / admin123，role=admin。"""
-    try:
-        from app.services.auth_service import hash_password, verify_password
+    """预置后台管理员 admin，密码来自 ADMIN_PASSWORD。
 
+    只在 admin 不存在时创建；已存在则仅校正角色，绝不重置密码，
+    支持后续人工修改密码后重启不被覆盖。
+    """
+    try:
+        from app.services.auth_service import hash_password
+
+        _ensure_engine()
+        Base.metadata.create_all(_engine)
         factory = get_session_factory()
         with factory() as session:
             exists = session.execute(select(User).where(User.username == "admin")).scalar_one_or_none()
             if not exists:
-                session.add(User(username="admin", password_hash=hash_password("admin123"), role="admin"))
+                session.add(User(username="admin", password_hash=hash_password(settings.ADMIN_PASSWORD), role="admin"))
                 session.commit()
-            elif exists.role != "admin" or not verify_password("admin123", exists.password_hash):
-                exists.role = "admin"
-                exists.password_hash = hash_password("admin123")
+            elif exists.role != "admin":
+                session.query(User).filter(User.username == "admin").update({"role": "admin"})
                 session.commit()
     except Exception as exc:
         logger.warning(f"预置 admin 用户失败: {exc}")

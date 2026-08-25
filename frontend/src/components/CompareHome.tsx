@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { API_BASE, authHeaders } from '../utils/api'
+import { API_BASE, apiFetch, authHeaders } from '../utils/api'
 import DiffViewer from './DiffViewer'
 import type { CompareResult, KnowledgeItem } from '../types'
 
@@ -9,7 +9,7 @@ interface CompareHomeProps {
 }
 
 async function downloadDocx(id: string) {
-  const res = await fetch(`${API_BASE}/compare/export/${id}`, { headers: authHeaders() })
+  const res = await apiFetch(`${API_BASE}/compare/export/${id}`, { headers: authHeaders() })
   if (!res.ok) throw new Error('导出失败')
   const blob = await res.blob()
   const url = URL.createObjectURL(blob)
@@ -35,7 +35,7 @@ export default function CompareHome({ token, onRequireLogin }: CompareHomeProps)
   const fileBRef = useRef<File | null>(null)
 
   useEffect(() => {
-    fetch(`${API_BASE}/knowledge/items`, { headers: authHeaders() })
+    apiFetch(`${API_BASE}/knowledge/items`, { headers: authHeaders() })
       .then((r) => r.json())
       .then((d) => setItems(d.items || []))
       .catch(() => setItems([]))
@@ -55,7 +55,7 @@ export default function CompareHome({ token, onRequireLogin }: CompareHomeProps)
     setError('')
     setResult(null)
     try {
-      const res = await fetch(`${API_BASE}/compare`, {
+      const res = await apiFetch(`${API_BASE}/compare`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify(body),
@@ -90,7 +90,7 @@ export default function CompareHome({ token, onRequireLogin }: CompareHomeProps)
       const fd = new FormData()
       fd.append('doc_a', fileARef.current)
       fd.append('doc_b', fileBRef.current)
-      const res = await fetch(`${API_BASE}/compare/upload`, { method: 'POST', headers: authHeaders(), body: fd })
+      const res = await apiFetch(`${API_BASE}/compare/upload`, { method: 'POST', headers: authHeaders(), body: fd })
       const data = await res.json()
       if (!res.ok) throw new Error(data.detail || '上传比对失败')
       setResult(data)

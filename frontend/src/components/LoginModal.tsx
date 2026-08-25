@@ -8,7 +8,6 @@ interface LoginModalProps {
 }
 
 export default function LoginModal({ onLogin, onClose }: LoginModalProps) {
-  const [mode, setMode] = useState<'login' | 'register'>('login')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -18,17 +17,19 @@ export default function LoginModal({ onLogin, onClose }: LoginModalProps) {
     setError('')
     setLoading(true)
     try {
-      const res = await fetch(`${API_BASE}/auth/${mode}`, {
+      const res = await fetch(`${API_BASE}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),
       })
       const data = await res.json()
       if (!res.ok) {
-        setError(data.detail || '操作失败')
+        setError(data.detail || '登录失败')
         return
       }
       onLogin(data.token, data.user)
+      setUsername('')
+      setPassword('')
     } catch {
       setError('网络异常，请稍后重试')
     } finally {
@@ -39,14 +40,12 @@ export default function LoginModal({ onLogin, onClose }: LoginModalProps) {
   return (
     <div className="login-overlay" onClick={onClose}>
       <div className="login-card" onClick={(e) => e.stopPropagation()}>
-        <div className="login-tabs">
-          <button className={mode === 'login' ? 'active' : ''} onClick={() => setMode('login')}>登录</button>
-          <button className={mode === 'register' ? 'active' : ''} onClick={() => setMode('register')}>注册</button>
-        </div>
+        <h2 className="login-title">登录</h2>
         <input
           className="login-input"
           placeholder="用户名"
           value={username}
+          autoComplete="username"
           onChange={(e) => setUsername(e.target.value)}
         />
         <input
@@ -54,13 +53,13 @@ export default function LoginModal({ onLogin, onClose }: LoginModalProps) {
           placeholder="密码"
           type="password"
           value={password}
+          autoComplete="current-password"
           onChange={(e) => setPassword(e.target.value)}
         />
         {error && <div className="login-error">{error}</div>}
         <button className="login-submit" disabled={loading} onClick={submit}>
-          {loading ? '处理中…' : mode === 'login' ? '登录' : '注册'}
+          {loading ? '处理中…' : '登录'}
         </button>
-        <div className="login-demo">测试账号 demo / demo123</div>
       </div>
     </div>
   )

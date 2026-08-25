@@ -5,12 +5,15 @@
 - SQLite URL：优先用本地 SQLite，避免每次全量读文件。
 - 其它 / 失败：回退 data/conversations.json，保证零基础设施演示可用。
 
-外部接口保持原样，chat API 无需改动。
+多账号隔离：
+- 会话记录写入 user_id，读/列/删都按 user_id 过滤。
+- 兼容历史无 user_id 数据（仅能通过内部直读访问，不向账号接口暴露）。
 """
 import json
 import time
 import uuid
 from pathlib import Path
+from typing import Optional
 
 from app.core.config import settings
 from app.core.logger import logger
@@ -32,6 +35,7 @@ class SessionStore:
         self._backend = self._detect_backend()
         self._load()
 
+    # ------------------------------------------------------------------ init
     def _detect_backend(self) -> str:
         url = (settings.DATABASE_URL or "").strip()
         if url.startswith("sqlite:"):
@@ -45,7 +49,6 @@ class SessionStore:
             return self._engine
         url = settings.DATABASE_URL
         if self._backend == "sqlite":
-            # 统一落到 data/ 目录，避免依赖进程 cwd。
             db_path = settings.DATA_DIR / "gov_assistant.db"
             self._engine = create_engine(
                 f"sqlite:///{db_path}",
@@ -72,12 +75,14 @@ class SessionStore:
                             id TEXT PRIMARY KEY,
                             title TEXT,
                             payload JSON NOT NULL,
+                            user_id TEXT,
                             created_at BIGINT NOT NULL,
                             updated_at BIGINT NOT NULL
                         )
                         """
                     )
                 )
+            self._ensure_user_id_column()
             self._sql_ready = True
             return True
         except Exception as exc:
@@ -85,6 +90,18 @@ class SessionStore:
             self._backend = "json"
             self._sql_ready = False
             return False
+
+    def _ensure_user_id_column(self):
+        """为旧库兼容补 user_id 列；无此列的服务端调用全部回退 JSON。"""
+        try:
+            with self._ensure_engine().begin() as conn:
+                try:
+                    conn.execute(text("ALTER TABLE chat_sessions ADD COLUMN user_id TEXT"))
+                except Exception:
+                    # 已存在该列或数据库不支持 ADD COLUMN，忽略
+                    pass
+        except Exception as exc:
+            logger.warning(f"会话表 user_id 列初始化失败: {exc}")
 
     def _load(self):
         if self._backend != "json" and self._init_sql():
@@ -116,6 +133,7 @@ class SessionStore:
         except Exception as exc:
             logger.warning(f"JSON 会话迁移失败，忽略: {exc}")
 
+    # ------------------------------------------------------------------ json
     def _save_json(self):
         try:
             self._path.write_text(
@@ -125,16 +143,18 @@ class SessionStore:
         except Exception as exc:
             logger.error(f"会话数据保存失败: {exc}")
 
+    # ------------------------------------------------------------------ sql
     def _sql_upsert(self, session_id: str, session: dict):
         with self._ensure_engine().begin() as conn:
             conn.execute(
                 text(
                     """
-                    INSERT INTO chat_sessions (id, title, payload, created_at, updated_at)
-                    VALUES (:id, :title, :payload, :created_at, :updated_at)
+                    INSERT INTO chat_sessions (id, title, payload, user_id, created_at, updated_at)
+                    VALUES (:id, :title, :payload, :user_id, :created_at, :updated_at)
                     ON CONFLICT (id) DO UPDATE SET
                         title = EXCLUDED.title,
                         payload = EXCLUDED.payload,
+                        user_id = EXCLUDED.user_id,
                         updated_at = EXCLUDED.updated_at
                     """
                 ),
@@ -142,6 +162,7 @@ class SessionStore:
                     "id": session_id,
                     "title": session.get("title") or "新对话",
                     "payload": json.dumps(session, ensure_ascii=False),
+                    "user_id": self._user_id_label(session.get("user_id")),
                     "created_at": session.get("createdAt", 0),
                     "updated_at": session.get("updatedAt", 0),
                 },
@@ -164,8 +185,10 @@ class SessionStore:
                 return None
         return payload
 
-    def _sql_get_history(self, session_id: str, limit: int = 10) -> list:
+    def _sql_get_history(self, session_id: str, limit: int = 10, user_id=None) -> list:
         session = self._sql_get(session_id)
+        if not self._owned(session, user_id):
+            return []
         if not session:
             return []
         cleaned = []
@@ -178,16 +201,23 @@ class SessionStore:
             cleaned.append(msg)
         return cleaned[-limit:]
 
-    def _sql_list(self) -> list:
+    def _sql_list(self, user_id=None) -> list:
         with self._ensure_engine().connect() as conn:
-            rows = conn.execute(
-                text(
-                    """
-                    SELECT payload FROM chat_sessions
-                    ORDER BY updated_at DESC
-                    """
-                )
-            ).mappings().all()
+            if user_id is not None:
+                rows = conn.execute(
+                    text(
+                        """
+                        SELECT payload FROM chat_sessions
+                        WHERE user_id = :user_id
+                        ORDER BY updated_at DESC
+                        """
+                    ),
+                    {"user_id": self._user_id_label(user_id)},
+                ).mappings().all()
+            else:
+                rows = conn.execute(
+                    text("SELECT payload FROM chat_sessions ORDER BY updated_at DESC")
+                ).mappings().all()
         sessions: list = []
         for row in rows:
             payload = row["payload"]
@@ -200,15 +230,29 @@ class SessionStore:
                 sessions.append(payload)
         return sessions
 
-    def _sql_delete(self, session_id: str) -> bool:
+    def _sql_delete(self, session_id: str, user_id=None) -> bool:
+        if user_id is not None:
+            session = self._sql_get(session_id)
+            if not self._owned(session, user_id):
+                return False
         with self._ensure_engine().begin() as conn:
-            result = conn.execute(
-                text("DELETE FROM chat_sessions WHERE id = :id"),
-                {"id": session_id},
-            )
+            result = conn.execute(text("DELETE FROM chat_sessions WHERE id = :id"), {"id": session_id})
             return bool(result.rowcount)
 
-    def create(self, title: str = "新对话", session_id: str | None = None) -> dict:
+    @staticmethod
+    def _owned(session: Optional[dict], user_id) -> bool:
+        if user_id is None:
+            return True
+        if not session:
+            return False
+        return session.get("user_id") == user_id
+
+    @staticmethod
+    def _user_id_label(user_id) -> str | None:
+        return None if user_id is None else str(user_id)
+
+    # ------------------------------------------------------------ public api
+    def create(self, title: str = "新对话", session_id: str | None = None, user_id=None) -> dict:
         session_id = session_id or str(uuid.uuid4())
         if self.get(session_id):
             raise ValueError(f"会话已存在: {session_id}")
@@ -217,6 +261,7 @@ class SessionStore:
             "id": session_id,
             "title": title,
             "messages": [],
+            "user_id": user_id,
             "createdAt": now,
             "updatedAt": now,
         }
@@ -227,26 +272,26 @@ class SessionStore:
             self._save_json()
         return dict(session)
 
-    def get(self, session_id: str) -> dict | None:
+    def get(self, session_id: str, user_id=None) -> dict | None:
         if self._sql_ready:
             session = self._sql_get(session_id)
         else:
             session = self._sessions.get(session_id)
-        if not session:
+        if not session or not self._owned(session, user_id):
             return None
         return dict(session)
 
-    def list(self) -> list:
+    def list(self, user_id=None) -> list:
         sessions = (
-            self._sql_list()
+            self._sql_list(user_id)
             if self._sql_ready
-            else [dict(s) for s in self._sessions.values()]
+            else [dict(s) for s in self._sessions.values() if self._owned(s, user_id)]
         )
         sessions.sort(key=lambda x: x.get("updatedAt", 0), reverse=True)
         return sessions
 
-    def add_messages(self, session_id: str, messages: list) -> dict | None:
-        session = self.get(session_id)
+    def add_messages(self, session_id: str, messages: list, user_id=None) -> dict | None:
+        session = self.get(session_id, user_id=user_id)
         if not session:
             return None
         session["messages"].extend(messages)
@@ -263,17 +308,19 @@ class SessionStore:
             self._save_json()
         return dict(session)
 
-    def get_history(self, session_id: str, limit: int = 10) -> list:
+    def get_history(self, session_id: str, limit: int = 10, user_id=None) -> list:
         if self._sql_ready:
-            return self._sql_get_history(session_id, limit)
+            return self._sql_get_history(session_id, limit, user_id=user_id)
         session = self._sessions.get(session_id)
-        if not session:
+        if not self._owned(session, user_id) or not session:
             return []
         return session.get("messages", [])[-limit:]
 
-    def delete(self, session_id: str) -> bool:
+    def delete(self, session_id: str, user_id=None) -> bool:
         if self._sql_ready:
-            return self._sql_delete(session_id)
+            return self._sql_delete(session_id, user_id=user_id)
+        if not self._owned(self._sessions.get(session_id), user_id):
+            return False
         if session_id in self._sessions:
             del self._sessions[session_id]
             self._save_json()

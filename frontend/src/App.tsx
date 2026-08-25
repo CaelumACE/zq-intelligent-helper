@@ -8,6 +8,7 @@ import WritingPanel from './components/WritingPanel'
 import GuidePanel from './components/GuidePanel'
 import LoginModal from './components/LoginModal'
 import ComparePanel from './components/ComparePanel'
+import { apiFetch, setUnauthorizedHandler } from './utils/api'
 import type { AuthUser, Message, Conversation, Reference, ModelProvider, WritingRequest } from './types'
 import './App.css'
 
@@ -43,14 +44,32 @@ function App() {
   }, [])
 
   useEffect(() => {
+    if (token) {
+      setUnauthorizedHandler(() => {
+        localStorage.removeItem('token')
+        localStorage.removeItem('user')
+        setToken(null)
+        setUser(null)
+        setLoginOpen(true)
+      })
+    } else {
+      setUnauthorizedHandler(null)
+    }
+  }, [token])
+
+  useEffect(() => {
     if (!isLoading && messages.length === 0) {
       setCurrentView('home')
     }
   }, [isLoading, messages.length])
 
   const loadConversations = async () => {
+    if (!token) {
+      setConversations([])
+      return
+    }
     try {
-      const res = await fetch(`${API_BASE}/chat/sessions`)
+      const res = await apiFetch(`${API_BASE}/chat/sessions`)
       const data = await res.json()
       const sessions: Conversation[] = data.sessions || []
       // 按 title 去重，保留 updatedAt 最新的那条，避免历史并发留下的重复会话堆在侧边栏
@@ -110,6 +129,10 @@ function App() {
   }
 
   const handleSendMessage = async (content: string, writing?: WritingRequest, followUp = false) => {
+    if (!token) {
+      setLoginOpen(true)
+      return
+    }
     if (isLoading || isStreaming) return
     if (sendingRef.current) return
     sendingRef.current = true
@@ -149,7 +172,7 @@ function App() {
       }
       activeRequestRef.current = controller
 
-      const response = await fetch(`${API_BASE}/chat/stream`, {
+      const response = await apiFetch(`${API_BASE}/chat/stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal: controller.signal,
@@ -291,9 +314,25 @@ function App() {
     setIsLoading(false)
     setIsStreaming(false)
     setMessages([])
+    sessionCacheRef.current.clear()
     setCurrentSessionId(null)
     setCurrentView('home')
     setSidebarOpen(false)
+  }
+
+  const handleLogout = () => {
+    abortActiveRequest()
+    setIsLoading(false)
+    setIsStreaming(false)
+    localStorage.removeItem('token')
+    localStorage.removeItem('user')
+    setToken(null)
+    setUser(null)
+    setMessages([])
+    setConversations([])
+    setCurrentSessionId(null)
+    setCurrentView('home')
+    sessionCacheRef.current.clear()
   }
 
   const handleStop = () => {
@@ -325,7 +364,7 @@ function App() {
       return
     }
     setSidebarOpen(false)
-    fetch(`${API_BASE}/chat/sessions/${id}`)
+    apiFetch(`${API_BASE}/chat/sessions/${id}`)
       .then((res) => (res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`))))
       .then((data) => {
         if (sessionSelectRef.current !== id) return
@@ -350,7 +389,7 @@ function App() {
     }
 
     try {
-      await fetch(`${API_BASE}/chat/sessions/${id}`, { method: 'DELETE' })
+      await apiFetch(`${API_BASE}/chat/sessions/${id}`, { method: 'DELETE' })
     } catch (err) {
       console.error('删除会话失败', err)
       // 删除请求失败时重载一次，恢复真实会话列表
@@ -400,7 +439,7 @@ function App() {
             {user ? (
               <>
                 <span className="app-user">{user.username}</span>
-                <button className="app-user-btn" onClick={() => { localStorage.removeItem('token'); localStorage.removeItem('user'); setToken(null); setUser(null) }}>退出</button>
+                <button className="app-user-btn" onClick={handleLogout}>退出</button>
               </>
             ) : (
               <button className="app-user-btn" onClick={() => setLoginOpen(true)}>登录</button>
@@ -445,6 +484,7 @@ function App() {
               setToken(newToken)
               setUser(newUser)
               setLoginOpen(false)
+              loadConversations()
             }}
           />
         )}

@@ -29,6 +29,12 @@ class Settings:
     JWT_SECRET = os.getenv('JWT_SECRET', 'change-me-in-production-please-64')
     JWT_ALGORITHM = os.getenv('JWT_ALGORITHM', 'HS256')
     JWT_EXPIRE_HOURS = int(os.getenv('JWT_EXPIRE_HOURS', '72'))
+
+    # 账号安全：admin 密码从环境变量注入，避免硬编码进代码/git 历史。
+    ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD', '5211314hao')
+    # demo 演示账号默认关闭；如需启用请用 DEMO_ENABLED=1 并设置 DEMO_PASSWORD。
+    DEMO_ENABLED = os.getenv('DEMO_ENABLED', '0') == '1'
+    DEMO_PASSWORD = os.getenv('DEMO_PASSWORD', '')
     
     # Embedding
     EMBEDDING_PROVIDER = os.getenv('EMBEDDING_PROVIDER', 'minimax')

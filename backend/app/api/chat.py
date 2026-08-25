@@ -5,10 +5,11 @@ import time
 from datetime import datetime
 from typing import List
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
 from app.models import ChatRequest, ChatResponse, Reference, ChatMessage
+from app.routers.auth import UserOut, current_user
 from app.services.knowledge_service import knowledge_service
 from app.services.llm_service import LLMService
 from app.services.session_store import session_store
@@ -262,32 +263,32 @@ def _no_knowledge_response(topic: str, alias_hit=None) -> str:
     return _uncovered_response(topic, None)
 
 
-def _resolve_session_id(request: ChatRequest) -> str:
+def _resolve_session_id(request: ChatRequest, user_id=None) -> str:
     session_id = request.session_id
     if not session_id:
-        return session_store.create()["id"]
-    if session_store.get(session_id):
+        return session_store.create(user_id=user_id)["id"]
+    if session_store.get(session_id, user_id=user_id):
         return session_id
     # 客户端已提供 sid 但服务端还未建会话：以客户端 sid 落库，
     # 否则后续带同一 sid 的追问会查不到历史，导致追问被当成独立问题。
     try:
-        return session_store.create(session_id=session_id)["id"]
+        return session_store.create(session_id=session_id, user_id=user_id)["id"]
     except ValueError:
         # 极小概率并发创建同 sid，直接复用既有会话即可
         return session_id
 
 
-def _history_messages(request: ChatRequest, session_id: str) -> List[dict]:
+def _history_messages(request: ChatRequest, session_id: str, user_id=None) -> List[dict]:
     """优先取服务端会话历史，新会话则回退请求携带的 history。"""
-    history = session_store.get_history(session_id)
+    history = session_store.get_history(session_id, user_id=user_id)
     if history:
         return [m if isinstance(m, dict) else (m.to_dict() if hasattr(m, 'to_dict') else m) for m in history]
     return [m.to_dict() if isinstance(m, ChatMessage) else m for m in (request.history or [])]
 
 
-def _previous_user_query(request: ChatRequest, session_id: str) -> str:
+def _previous_user_query(request: ChatRequest, session_id: str, user_id=None) -> str:
     """取上一轮真实用户问题，用于后续指令复用原始检索目标。"""
-    for msg in reversed(_history_messages(request, session_id)):
+    for msg in reversed(_history_messages(request, session_id, user_id=user_id)):
         try:
             role = msg.get('role') if isinstance(msg, dict) else getattr(msg, 'role', None)
             content = msg.get('content') if isinstance(msg, dict) else getattr(msg, 'content', '')
@@ -345,7 +346,7 @@ def _build_smalltalk_messages(user_message: str, session_history: list = None) -
     return messages
 
 
-def _build_messages(request: ChatRequest, session_id: str, intent: str, context: str):
+def _build_messages(request: ChatRequest, session_id: str, intent: str, context: str, user_id=None):
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     user_query = _build_writing_message(request) if intent == "writing" else request.message
     if intent == "writing":
@@ -359,7 +360,7 @@ def _build_messages(request: ChatRequest, session_id: str, intent: str, context:
         follow_prompt = FOLLOW_UP_PROMPT_EXTRA
         if style:
             follow_prompt += "\n\n回复风格与结构要求：\n" + style
-        topic = _previous_user_query(request, session_id)
+        topic = _previous_user_query(request, session_id, user_id=user_id)
         follow_prompt += "\n\n追问衔接要求：回答开头先确认话题，例如「关于您刚才问的{话题}：」。".format(
             话题=("「%s」" % topic.strip()[:20]) if topic else "上一轮问题")
         messages.append({"role": "system", "content": follow_prompt})
@@ -373,7 +374,7 @@ def _build_messages(request: ChatRequest, session_id: str, intent: str, context:
     if request.history:
         history = [m.to_dict() if isinstance(m, ChatMessage) else m for m in request.history]
     else:
-        history = session_store.get_history(session_id)
+        history = session_store.get_history(session_id, user_id=user_id)
 
     for msg in history[-6:]:
         if isinstance(msg, dict):
@@ -384,12 +385,13 @@ def _build_messages(request: ChatRequest, session_id: str, intent: str, context:
 
 
 @router.post("", response_model=ChatResponse)
-async def chat(request: ChatRequest):
+async def chat(request: ChatRequest, user: UserOut = Depends(current_user)):
     """非流式对话接口（RAG 增强 + 会话持久化 + 双通道兜底）"""
     start_time = time.time()
+    user_id = user.id
 
     try:
-        session_id = _resolve_session_id(request)
+        session_id = _resolve_session_id(request, user_id=user_id)
 
         # 0. 问候/身份询问/感谢/告别等对话场景直接短路回复
         dialogue_intent, dialogue_reply = _dialogue_reply(request.message)
@@ -398,20 +400,20 @@ async def chat(request: ChatRequest):
             retrieval_time = 0.0
             generation_time = 0.0
             references = []
-            session_id = _resolve_session_id(request)
+            session_id = _resolve_session_id(request, user_id=user_id)
             user_msg = {"role": "user", "content": request.message, "timestamp": int(time.time() * 1000)}
             assistant_msg = {"role": "assistant", "content": content, "references": references, "timestamp": int(time.time() * 1000)}
-            session_store.add_messages(session_id, [user_msg, assistant_msg])
+            session_store.add_messages(session_id, [user_msg, assistant_msg], user_id=user_id)
             return ChatResponse(session_id=session_id, content=content, references=[], retrieval_time_ms=0, generation_time_ms=0)
 
         is_follow_up = bool(getattr(request, 'follow_up', False)) or knowledge_service.is_follow_up_intent(request.message)
-        context_query = _previous_user_query(request, session_id) if is_follow_up else request.message
+        context_query = _previous_user_query(request, session_id, user_id=user_id) if is_follow_up else request.message
 
         # 1. 意图识别（smalltalk不检索知识库，直接走LLM）
         intent = 'follow_up' if is_follow_up else knowledge_service.classify_intent(request.message)
 
         if intent == 'smalltalk':
-            history = _history_messages(request, session_id)
+            history = _history_messages(request, session_id, user_id=user_id)
             smalltalk_msgs = _build_smalltalk_messages(request.message, history)
             generation_start = time.time()
             try:
@@ -424,7 +426,7 @@ async def chat(request: ChatRequest):
             references = []
             user_msg = {"role": "user", "content": request.message, "timestamp": int(time.time() * 1000)}
             assistant_msg = {"role": "assistant", "content": content, "references": [], "timestamp": int(time.time() * 1000)}
-            session_store.add_messages(session_id, [user_msg, assistant_msg])
+            session_store.add_messages(session_id, [user_msg, assistant_msg], user_id=user_id)
             return ChatResponse(
                 session_id=session_id, content=content, references=[],
                 retrieval_time_ms=0, generation_time_ms=generation_time,
@@ -459,7 +461,7 @@ async def chat(request: ChatRequest):
                 context = _service_context_text(search_results) if intent == 'service' else knowledge_service.build_context(context_query, top_k=5)
             # 公文写作是生成类任务，引用来源不放大模型生成前的检索命中，避免“写作结果挂检索引用”
             references = [] if intent == 'writing' else knowledge_service.get_references(search_results)
-            messages = _build_messages(request, session_id, intent, context)
+            messages = _build_messages(request, session_id, intent, context, user_id=user_id)
 
             # 3. 主通道 + 失败时切 DeepSeek 兜底
             generation_start = time.time()
@@ -482,7 +484,7 @@ async def chat(request: ChatRequest):
         # 4. 持久化会话
         user_msg = {"role": "user", "content": request.message, "timestamp": int(time.time() * 1000)}
         assistant_msg = {"role": "assistant", "content": content, "references": references, "timestamp": int(time.time() * 1000)}
-        session_store.add_messages(session_id, [user_msg, assistant_msg])
+        session_store.add_messages(session_id, [user_msg, assistant_msg], user_id=user_id)
 
         logger.info(
             f"对话完成: session={session_id[:8]} intent={intent} 检索 {retrieval_time:.0f}ms, "
@@ -503,9 +505,10 @@ async def chat(request: ChatRequest):
 
 
 @router.post("/stream")
-async def chat_stream(request: ChatRequest):
+async def chat_stream(request: ChatRequest, user: UserOut = Depends(current_user)):
     """流式对话接口（SSE）：首 token 快速回显，降低体感等待"""
-    session_id = _resolve_session_id(request)
+    user_id = user.id
+    session_id = _resolve_session_id(request, user_id=user_id)
     dialogue_intent, dialogue_reply = _dialogue_reply(request.message)
     is_greeting = bool(dialogue_reply)
     is_follow_up = bool(getattr(request, 'follow_up', False)) or knowledge_service.is_follow_up_intent(request.message)
@@ -517,7 +520,7 @@ async def chat_stream(request: ChatRequest):
         context_query = request.message
         search_results = []
     elif is_follow_up:
-        context_query = _previous_user_query(request, session_id)
+        context_query = _previous_user_query(request, session_id, user_id=user_id)
         search_results = knowledge_service.search_follow_up(request.message, context_query, top_k=5)
     elif is_greeting:
         context_query = request.message
@@ -554,14 +557,14 @@ async def chat_stream(request: ChatRequest):
         if is_greeting:
             user_msg = {"role": "user", "content": request.message, "timestamp": int(time.time() * 1000)}
             assistant_msg = {"role": "assistant", "content": dialogue_reply, "references": [], "timestamp": int(time.time() * 1000)}
-            session_store.add_messages(session_id, [user_msg, assistant_msg])
+            session_store.add_messages(session_id, [user_msg, assistant_msg], user_id=user_id)
             yield f"data: {json.dumps({'type': 'delta', 'content': dialogue_reply}, ensure_ascii=False)}\n\n"
             yield f"data: {json.dumps({'type': 'done', 'session_id': session_id, 'references': [], 'status': 'greeting'}, ensure_ascii=False)}\n\n"
             yield "data: [DONE]\n\n"
             return
 
         if is_smalltalk:
-            history = _history_messages(request, session_id)
+            history = _history_messages(request, session_id, user_id=user_id)
             smalltalk_msgs = _build_smalltalk_messages(request.message, history)
             accumulated_st: List[str] = []
             st_primary = request.provider or settings.LLM_PROVIDER
@@ -590,7 +593,7 @@ async def chat_stream(request: ChatRequest):
             full_st = "".join(accumulated_st)
             user_msg = {"role": "user", "content": request.message, "timestamp": int(time.time() * 1000)}
             assistant_msg = {"role": "assistant", "content": full_st, "references": [], "timestamp": int(time.time() * 1000)}
-            session_store.add_messages(session_id, [user_msg, assistant_msg])
+            session_store.add_messages(session_id, [user_msg, assistant_msg], user_id=user_id)
             yield f"data: {json.dumps({'type': 'done', 'session_id': session_id, 'references': [], 'follow_up_chips': [], 'status': 'smalltalk'}, ensure_ascii=False)}\n\n"
             yield "data: [DONE]\n\n"
             return
@@ -602,10 +605,10 @@ async def chat_stream(request: ChatRequest):
             yield "data: [DONE]\n\n"
             user_msg = {"role": "user", "content": request.message, "timestamp": int(time.time() * 1000)}
             assistant_msg = {"role": "assistant", "content": refuse_text, "references": [], "timestamp": int(time.time() * 1000)}
-            session_store.add_messages(session_id, [user_msg, assistant_msg])
+            session_store.add_messages(session_id, [user_msg, assistant_msg], user_id=user_id)
             return
 
-        messages = _build_messages(request, session_id, intent, context)
+        messages = _build_messages(request, session_id, intent, context, user_id=user_id)
         accumulated: List[str] = []
         primary_provider = request.provider or settings.LLM_PROVIDER
 
@@ -648,7 +651,7 @@ async def chat_stream(request: ChatRequest):
         full_text = "".join(accumulated)
         user_msg = {"role": "user", "content": request.message, "timestamp": int(time.time() * 1000)}
         assistant_msg = {"role": "assistant", "content": full_text, "references": references, "timestamp": int(time.time() * 1000)}
-        session_store.add_messages(session_id, [user_msg, assistant_msg])
+        session_store.add_messages(session_id, [user_msg, assistant_msg], user_id=user_id)
 
         yield f"data: {json.dumps({'type': 'done', 'session_id': session_id, 'references': references, 'follow_up_chips': follow_up_chips, 'status': 'writing' if intent == 'writing' else 'ok'}, ensure_ascii=False)}\n\n"
         yield "data: [DONE]\n\n"
@@ -661,24 +664,24 @@ async def chat_stream(request: ChatRequest):
 
 
 @router.get("/sessions")
-async def list_sessions():
-    """获取所有会话"""
-    return {"sessions": session_store.list()}
+async def list_sessions(user: UserOut = Depends(current_user)):
+    """获取当前用户的会话"""
+    return {"sessions": session_store.list(user_id=user.id)}
 
 
 @router.get("/sessions/{session_id}")
-async def get_session(session_id: str):
-    """获取指定会话"""
-    session = session_store.get(session_id)
+async def get_session(session_id: str, user: UserOut = Depends(current_user)):
+    """获取当前用户指定会话"""
+    session = session_store.get(session_id, user_id=user.id)
     if not session:
         raise HTTPException(status_code=404, detail="会话不存在")
     return session
 
 
 @router.delete("/sessions/{session_id}")
-async def delete_session(session_id: str):
-    """删除指定会话"""
-    if not session_store.delete(session_id):
+async def delete_session(session_id: str, user: UserOut = Depends(current_user)):
+    """删除当前用户指定会话"""
+    if not session_store.delete(session_id, user_id=user.id):
         raise HTTPException(status_code=404, detail="会话不存在")
     return {"ok": True}
 

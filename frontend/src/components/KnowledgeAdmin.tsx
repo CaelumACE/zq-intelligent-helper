@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { API_BASE, authHeaders } from '../utils/api'
+import { API_BASE, apiFetch, authHeaders } from '../utils/api'
 import type { KnowledgeItem } from '../types'
 
 interface KnowledgeAdminProps {
@@ -16,7 +16,7 @@ export default function KnowledgeAdmin({ userRole }: KnowledgeAdminProps) {
 
   const load = async () => {
     try {
-      const res = await fetch(`${API_BASE}/knowledge/items`, { headers: authHeaders() })
+      const res = await apiFetch(`${API_BASE}/knowledge/items`, { headers: authHeaders() })
       const data = await res.json()
       if (!res.ok) throw new Error(data.detail || '加载失败')
       setItems(data.items || [])
@@ -36,7 +36,7 @@ export default function KnowledgeAdmin({ userRole }: KnowledgeAdminProps) {
     setError('')
     if (!title.trim() || !content.trim()) { setError('标题和内容不能为空'); return }
     try {
-      const res = await fetch(editing ? `${API_BASE}/knowledge/items/${editing.id}` : `${API_BASE}/knowledge/items`, {
+      const res = await apiFetch(editing ? `${API_BASE}/knowledge/items/${editing.id}` : `${API_BASE}/knowledge/items`, {
         method: editing ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify(editing ? { title, content, category } : { title, content, category, source: '后台录入' }),
@@ -51,13 +51,13 @@ export default function KnowledgeAdmin({ userRole }: KnowledgeAdminProps) {
   }
 
   const toggle = async (item: KnowledgeItem) => {
-    await fetch(`${API_BASE}/knowledge/items/${item.id}/toggle`, { method: 'POST', headers: authHeaders() })
+    await apiFetch(`${API_BASE}/knowledge/items/${item.id}/toggle`, { method: 'POST', headers: authHeaders() })
     load()
   }
 
   const remove = async (item: KnowledgeItem) => {
     if (!window.confirm(`确认删除「${item.title}」？`)) return
-    await fetch(`${API_BASE}/knowledge/items/${item.id}`, { method: 'DELETE', headers: authHeaders() })
+    await apiFetch(`${API_BASE}/knowledge/items/${item.id}`, { method: 'DELETE', headers: authHeaders() })
     load()
   }
 

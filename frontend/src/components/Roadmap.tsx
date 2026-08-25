@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { API_BASE, authHeaders } from '../utils/api'
+import { API_BASE, apiFetch, authHeaders } from '../utils/api'
 import type { GuideStep } from '../types'
 
 interface RoadmapProps {
@@ -26,7 +26,7 @@ export default function Roadmap({ themeId, themeName, icon, totalDays, token, on
   const [progressDirty, setProgressDirty] = useState(false)
 
   useEffect(() => {
-    fetch(`${API_BASE}/guide/theme/${themeId}/roadmap`)
+    apiFetch(`${API_BASE}/guide/theme/${themeId}/roadmap`)
       .then((r) => r.json())
       .then((d) => setSteps(d.steps || []))
       .catch(() => setSteps([]))
@@ -35,7 +35,7 @@ export default function Roadmap({ themeId, themeName, icon, totalDays, token, on
 
   useEffect(() => {
     if (!token) return
-    fetch(`${API_BASE}/guide/progress/${themeId}`, { headers: authHeaders() })
+    apiFetch(`${API_BASE}/guide/progress/${themeId}`, { headers: authHeaders() })
       .then((r) => (r.ok ? r.json() : { progress: {} }))
       .then((d) => setProgress(d.progress || {}))
       .catch(() => setProgress({}))
@@ -54,7 +54,7 @@ export default function Roadmap({ themeId, themeName, icon, totalDays, token, on
     setProgress(next)
     setProgressDirty(true)
     try {
-      await fetch(`${API_BASE}/guide/progress/${themeId}/${stepId}`, {
+      await apiFetch(`${API_BASE}/guide/progress/${themeId}/${stepId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ status: isDone ? 'pending' : 'done' }),

@@ -108,15 +108,12 @@
 
 .login-overlay { position: fixed; inset: 0; background: rgba(18,48,79,.42); display: flex; align-items: center; justify-content: center; z-index: 90; }
 .login-card { width: 340px; background: var(--surface); border-radius: 16px; padding: 24px; box-shadow: var(--shadow-md); }
-.login-tabs { display: flex; gap: 8px; margin-bottom: 18px; }
-.login-tabs button { flex: 1; padding: 8px; border: none; background: transparent; color: var(--text-2); font-size: 14px; font-weight: 700; cursor: pointer; border-bottom: 2px solid transparent; }
-.login-tabs button.active { color: var(--primary); border-bottom-color: var(--gold); }
+.login-title { margin: 0 0 16px; font-size: 18px; font-weight: 700; color: var(--text-1); text-align: center; }
 .login-input { width: 100%; margin-bottom: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 9px; font-size: 14px; outline: none; }
 .login-input:focus { border-color: var(--gold); }
 .login-error { color: var(--danger); font-size: 12px; margin: 4px 0 8px; }
 .login-submit { width: 100%; padding: 10px; border: none; border-radius: 9px; background: var(--primary); color: #fff; font-size: 14px; font-weight: 700; cursor: pointer; }
 .login-submit:disabled { opacity: .6; }
-.login-demo { margin-top: 10px; text-align: center; color: var(--text-3); font-size: 12px; }
 
 @media (max-width: 768px) {
   .guide-grid { grid-template-columns: repeat(2, 1fr); }

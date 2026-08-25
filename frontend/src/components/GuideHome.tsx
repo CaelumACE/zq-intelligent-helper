@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { API_BASE } from '../utils/api'
+import { API_BASE, apiFetch } from '../utils/api'
 import Icon from './Icons'
 import type { GuideTheme } from '../types'
 
@@ -16,7 +16,7 @@ export default function GuideHome({ onOpenTheme }: GuideHomeProps) {
   const [message, setMessage] = useState('')
 
   useEffect(() => {
-    fetch(`${API_BASE}/guide/themes`)
+    apiFetch(`${API_BASE}/guide/themes`)
       .then((r) => r.json())
       .then((d) => setThemes(d.themes || []))
       .catch(() => setThemes([]))
@@ -28,7 +28,7 @@ export default function GuideHome({ onOpenTheme }: GuideHomeProps) {
     setCandidates([])
     setMessage('')
     try {
-      const res = await fetch(`${API_BASE}/guide/match`, {
+      const res = await apiFetch(`${API_BASE}/guide/match`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: q }),
