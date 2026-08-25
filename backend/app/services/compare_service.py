@@ -121,6 +121,12 @@ async def compare_documents(doc_a: Dict[str, str], doc_b: Dict[str, str]) -> Dic
     if not (doc_a.get("content") or "").strip() and not (doc_b.get("content") or "").strip():
         return _normalize({"summary": {"brief": "两份文档均为空"}, "diffs": []})
 
+    # 完全相同直接返回 0 变更，避免 LLM 幻觉，也保证 QA 确定性断言
+    norm_a = "\n".join(line.strip() for line in (doc_a.get("content") or "").splitlines() if line.strip())
+    norm_b = "\n".join(line.strip() for line in (doc_b.get("content") or "").splitlines() if line.strip())
+    if norm_a == norm_b:
+        return _normalize({"summary": {"brief": "两份文档内容一致，无差异"}, "diffs": []})
+
     try:
         a_parts = _chunk_text(a_text)
         b_parts = _chunk_text(b_text)
