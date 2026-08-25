@@ -92,6 +92,7 @@ function App() {
       })
     } else {
       setUnauthorizedHandler(null)
+      setLoginOpen(false)
     }
   }, [token])
 
@@ -454,9 +455,9 @@ function App() {
         onLogin={(newToken, newUser) => {
           sessionStorage.setItem('token', newToken)
           sessionStorage.setItem('user', JSON.stringify(newUser))
+          setLoginOpen(false)
           setToken(newToken)
           setUser(newUser)
-          loadConversations()
         }}
       />
     )
@@ -555,7 +556,6 @@ function App() {
               setToken(newToken)
               setUser(newUser)
               setLoginOpen(false)
-              loadConversations()
             }}
           />
         )}
