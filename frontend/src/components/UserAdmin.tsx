@@ -238,9 +238,11 @@ export default function UserAdmin({ onClose, currentUserId, currentUserRole }: {
                           <button className="ua-btn-sm" disabled={locked || isSelf} onClick={() => handleToggleActive(u)}>
                             {u.is_active ? '禁用' : '启用'}
                           </button>
-                          <button className="ua-btn-sm" disabled={locked} onClick={() => handleToggleRole(u)}>
-                            {u.role === 'admin' ? '降为普通' : '设为管理员'}
-                          </button>
+                          {isSuper && (
+                            <button className="ua-btn-sm" disabled={locked} onClick={() => handleToggleRole(u)}>
+                              {u.role === 'admin' ? '降为普通' : '设为管理员'}
+                            </button>
+                          )}
                           <button className="ua-btn-sm" disabled={locked} onClick={() => { setResetTarget(u); setNewPwd('') }}>
                             重置密码
                           </button>
