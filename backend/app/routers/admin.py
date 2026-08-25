@@ -101,12 +101,12 @@ async def update_admin_user(user_id: int, body: AdminUserUpdate, user: UserOut =
     target = get_user(user_id)
     if not target:
         raise HTTPException(status_code=404, detail="用户不存在")
-    # 普通管理员不能修改超级管理员
-    if target.get("role") == "super_admin" and user.role != "super_admin":
-        raise HTTPException(status_code=403, detail="无权修改超级管理员账号")
+    _ensure_can_manage(target, user, action="修改")
     # 只有超级管理员可以授予/撤销超级管理员角色
     if body.role == "super_admin" and user.role != "super_admin":
         raise HTTPException(status_code=403, detail="仅超级管理员可授予超级管理员角色")
+    if body.role == "admin" and user.role != "super_admin":
+        raise HTTPException(status_code=403, detail="仅超级管理员可授予管理员角色")
     if user.id == user_id:
         if body.is_active is False:
             raise HTTPException(status_code=400, detail="不能禁用当前登录的管理员账号")

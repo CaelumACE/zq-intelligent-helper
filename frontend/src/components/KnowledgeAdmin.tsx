@@ -27,7 +27,7 @@ export default function KnowledgeAdmin({ userRole }: KnowledgeAdminProps) {
 
   useEffect(() => { load() }, [])
 
-  const isAdmin = userRole === 'admin'
+  const isAdmin = userRole === 'admin' || userRole === 'super_admin'
   if (!isAdmin) return <div className="kb-empty">后台管理仅管理员可用，当前账号无权限。</div>
 
   const resetForm = () => { setTitle(''); setContent(''); setCategory('policy'); setEditing(null) }
