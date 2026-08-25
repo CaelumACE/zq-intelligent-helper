@@ -110,8 +110,8 @@ export default function Sidebar({
       <div className="side-foot">
         {user ? (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-            <span>👤 {user.username}{user.role === 'admin' ? '（管理员）' : ''}</span>
-            {user.role === 'admin' && onOpenUserAdmin && (
+            <span>👤 {user.username}{user.role === 'super_admin' ? '（超级管理员）' : user.role === 'admin' ? '（管理员）' : ''}</span>
+            {(user.role === 'admin' || user.role === 'super_admin') && onOpenUserAdmin && (
               <button
                 onClick={onOpenUserAdmin}
                 style={{ background: 'none', border: '1px solid rgba(255,255,255,0.3)', color: 'inherit', fontSize: 11, padding: '2px 8px', borderRadius: 4, cursor: 'pointer' }}

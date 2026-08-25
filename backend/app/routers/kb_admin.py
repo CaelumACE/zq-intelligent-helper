@@ -28,7 +28,7 @@ class ItemUpdate(BaseModel):
 
 
 def _require_admin(user) -> None:
-    if getattr(user, "role", None) != "admin":
+    if getattr(user, "role", None) not in ("admin", "super_admin"):
         raise HTTPException(status_code=403, detail="需要管理员权限")
 
 

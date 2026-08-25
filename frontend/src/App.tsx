@@ -111,16 +111,7 @@ function App() {
       const res = await apiFetch(`${API_BASE}/chat/sessions`)
       const data = await res.json()
       const sessions: Conversation[] = data.sessions || []
-      // 按 title 去重，保留 updatedAt 最新的那条，避免历史并发留下的重复会话堆在侧边栏
-      const best = new Map<string, Conversation>()
-      for (const conv of sessions) {
-        const key = (conv.title || '').trim() || conv.id
-        const prev = best.get(key)
-        if (!prev || (conv.updatedAt || 0) > (prev.updatedAt || 0)) {
-          best.set(key, conv)
-        }
-      }
-      setConversations(Array.from(best.values()))
+      setConversations(sessions)
     } catch (e) {
       console.error('加载会话失败', e)
     }
@@ -571,7 +562,7 @@ function App() {
         />
 
         {userAdminOpen && (
-          <UserAdmin onClose={() => setUserAdminOpen(false)} currentUserId={user?.id ?? null} />
+          <UserAdmin onClose={() => setUserAdminOpen(false)} currentUserId={user?.id ?? null} currentUserRole={user?.role} />
         )}
       </div>
     </div>

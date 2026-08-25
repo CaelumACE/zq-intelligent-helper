@@ -17,13 +17,30 @@ interface UsersResponse {
   page_size: number
 }
 
-export default function UserAdmin({ onClose, currentUserId }: { onClose: () => void; currentUserId: number | null }) {
+const ROLE_LABEL: Record<string, string> = {
+  super_admin: '超级管理员',
+  admin: '管理员',
+  user: '普通用户',
+}
+
+const ROLE_BADGE: Record<string, string> = {
+  super_admin: 'ua-badge-super',
+  admin: 'ua-badge-admin',
+  user: 'ua-badge-user',
+}
+
+export default function UserAdmin({ onClose, currentUserId, currentUserRole }: {
+  onClose: () => void
+  currentUserId: number | null
+  currentUserRole?: string
+}) {
   const [users, setUsers] = useState<AdminUser[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [keyword, setKeyword] = useState('')
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
+  const [pageSize, setPageSize] = useState(10)
   const [showCreate, setShowCreate] = useState(false)
   const [form, setForm] = useState({ username: '', password: '', role: 'user' })
   const [submitting, setSubmitting] = useState(false)
@@ -33,7 +50,7 @@ export default function UserAdmin({ onClose, currentUserId }: { onClose: () => v
   const [actionLoading, setActionLoading] = useState<number | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<AdminUser | null>(null)
 
-  const pageSize = 20
+  const isSuper = currentUserRole === 'super_admin'
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -50,11 +67,21 @@ export default function UserAdmin({ onClose, currentUserId }: { onClose: () => v
     } finally {
       setLoading(false)
     }
-  }, [page, keyword])
+  }, [page, pageSize, keyword])
 
   useEffect(() => { load() }, [load])
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
+
+  // 切换页大小回到第一页
+  useEffect(() => { setPage(1) }, [pageSize])
+
+  const canModify = (u: AdminUser): boolean => {
+    if (actionLoading === u.id) return false
+    // 超级管理员账号：只有自己能操作（且仅部分操作），其他管理员不可触碰
+    if (u.role === 'super_admin' && !isSuper) return false
+    return true
+  }
 
   const handleCreate = async () => {
     setFormError('')
@@ -80,6 +107,7 @@ export default function UserAdmin({ onClose, currentUserId }: { onClose: () => v
   }
 
   const handleToggleActive = async (u: AdminUser) => {
+    if (u.role === 'super_admin') return
     setActionLoading(u.id)
     try {
       const res = await apiFetch(`${API_BASE}/admin/users/${u.id}`, {
@@ -94,12 +122,14 @@ export default function UserAdmin({ onClose, currentUserId }: { onClose: () => v
   }
 
   const handleToggleRole = async (u: AdminUser) => {
+    if (u.role === 'super_admin') return
     setActionLoading(u.id)
     try {
+      const nextRole = u.role === 'admin' ? 'user' : 'admin'
       const res = await apiFetch(`${API_BASE}/admin/users/${u.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ role: u.role === 'admin' ? 'user' : 'admin' }),
+        body: JSON.stringify({ role: nextRole }),
       })
       if (res.ok) load()
     } finally {
@@ -164,7 +194,7 @@ export default function UserAdmin({ onClose, currentUserId }: { onClose: () => v
           <table className="ua-table">
             <thead>
               <tr>
-                <th>ID</th>
+                <th style={{ width: 50 }}>序号</th>
                 <th>用户名</th>
                 <th>角色</th>
                 <th>状态</th>
@@ -173,60 +203,73 @@ export default function UserAdmin({ onClose, currentUserId }: { onClose: () => v
               </tr>
             </thead>
             <tbody>
-              {users.map((u) => (
-                <tr key={u.id}>
-                  <td>{u.id}</td>
-                  <td>{u.username}</td>
-                  <td>
-                    <span className={`ua-badge ${u.role === 'admin' ? 'ua-badge-admin' : 'ua-badge-user'}`}>
-                      {u.role === 'admin' ? '管理员' : '普通用户'}
-                    </span>
-                  </td>
-                  <td>
-                    <span className={`ua-dot ${u.is_active ? 'ua-dot-on' : 'ua-dot-off'}`} />
-                    {u.is_active ? '启用' : '禁用'}
-                  </td>
-                  <td>{u.last_login ? new Date(u.last_login).toLocaleString('zh-CN') : '—'}</td>
-                  <td className="ua-actions">
-                    <button
-                      className="ua-btn-sm"
-                      disabled={actionLoading === u.id}
-                      onClick={() => handleToggleActive(u)}
-                    >
-                      {u.is_active ? '禁用' : '启用'}
-                    </button>
-                    <button
-                      className="ua-btn-sm"
-                      disabled={actionLoading === u.id}
-                      onClick={() => handleToggleRole(u)}
-                    >
-                      {u.role === 'admin' ? '降为普通' : '设为管理员'}
-                    </button>
-                    <button
-                      className="ua-btn-sm"
-                      disabled={actionLoading === u.id}
-                      onClick={() => { setResetTarget(u); setNewPwd('') }}
-                    >
-                      重置密码
-                    </button>
-                    <button
-                      className="ua-btn-sm ua-btn-danger"
-                      disabled={actionLoading === u.id || u.id === currentUserId}
-                      title={u.id === currentUserId ? '不能删除当前登录账号' : ''}
-                      onClick={() => setDeleteTarget(u)}
-                    >
-                      删除
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {users.length === 0 ? (
+                <tr><td colSpan={6} style={{ textAlign: 'center', color: '#9ca3af', padding: '24px' }}>暂无用户</td></tr>
+              ) : users.map((u, idx) => {
+                const isSelf = u.id === currentUserId
+                const isSuperRow = u.role === 'super_admin'
+                const locked = !canModify(u)
+                return (
+                  <tr key={u.id}>
+                    <td style={{ color: '#9ca3af' }}>{(page - 1) * pageSize + idx + 1}</td>
+                    <td>
+                      {u.username}
+                      {isSelf && <span style={{ color: '#2563eb', fontSize: 12, marginLeft: 6 }}>（当前账号）</span>}
+                    </td>
+                    <td>
+                      <span className={`ua-badge ${ROLE_BADGE[u.role] || 'ua-badge-user'}`}>
+                        {ROLE_LABEL[u.role] || u.role}
+                      </span>
+                    </td>
+                    <td>
+                      <span className={`ua-dot ${u.is_active ? 'ua-dot-on' : 'ua-dot-off'}`} />
+                      {u.is_active ? '启用' : '禁用'}
+                    </td>
+                    <td>{u.last_login ? new Date(u.last_login).toLocaleString('zh-CN') : '—'}</td>
+                    <td className="ua-actions">
+                      {isSuperRow ? (
+                        <span style={{ color: '#d97706', fontSize: 12 }}>🔒 受保护账号</span>
+                      ) : (
+                        <>
+                          <button className="ua-btn-sm" disabled={locked || isSelf} onClick={() => handleToggleActive(u)}>
+                            {u.is_active ? '禁用' : '启用'}
+                          </button>
+                          <button className="ua-btn-sm" disabled={locked} onClick={() => handleToggleRole(u)}>
+                            {u.role === 'admin' ? '降为普通' : '设为管理员'}
+                          </button>
+                          <button className="ua-btn-sm" disabled={locked} onClick={() => { setResetTarget(u); setNewPwd('') }}>
+                            重置密码
+                          </button>
+                          <button
+                            className="ua-btn-sm ua-btn-danger"
+                            disabled={locked || isSelf}
+                            title={isSelf ? '不能删除当前登录账号' : ''}
+                            onClick={() => setDeleteTarget(u)}
+                          >
+                            删除
+                          </button>
+                        </>
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         )}
 
         <div className="ua-pager">
-          <span>共 {total} 条，第 {page}/{totalPages} 页</span>
-          <div>
+          <span>
+            共 <strong>{total}</strong> 个用户，第 {page}/{totalPages} 页
+          </span>
+          <div className="ua-pager-controls">
+            <select
+              className="ua-page-size"
+              value={pageSize}
+              onChange={(e) => setPageSize(Number(e.target.value))}
+            >
+              {[10, 20, 50, 100].map(n => <option key={n} value={n}>{n}条/页</option>)}
+            </select>
             <button className="ua-btn-sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>上一页</button>
             <button className="ua-btn-sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>下一页</button>
           </div>
@@ -236,26 +279,14 @@ export default function UserAdmin({ onClose, currentUserId }: { onClose: () => v
           <div className="ua-modal-mask" onClick={() => setShowCreate(false)}>
             <div className="ua-modal" onClick={(e) => e.stopPropagation()}>
               <h3>新建用户</h3>
-              <input
-                className="ua-input"
-                placeholder="用户名（3-32位字母数字下划线）"
-                value={form.username}
-                onChange={(e) => setForm({ ...form, username: e.target.value })}
-              />
-              <input
-                className="ua-input"
-                type="password"
-                placeholder="密码（至少8位，含字母和数字）"
-                value={form.password}
-                onChange={(e) => setForm({ ...form, password: e.target.value })}
-              />
-              <select
-                className="ua-input"
-                value={form.role}
-                onChange={(e) => setForm({ ...form, role: e.target.value })}
-              >
+              <input className="ua-input" placeholder="用户名（3-32位字母数字下划线）" value={form.username}
+                onChange={(e) => setForm({ ...form, username: e.target.value })} />
+              <input className="ua-input" type="password" placeholder="密码（至少8位，含字母和数字）" value={form.password}
+                onChange={(e) => setForm({ ...form, password: e.target.value })} />
+              <select className="ua-input" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
                 <option value="user">普通用户</option>
                 <option value="admin">管理员</option>
+                {isSuper && <option value="super_admin">超级管理员</option>}
               </select>
               {formError && <div className="ua-error">{formError}</div>}
               <div className="ua-modal-actions">
@@ -272,20 +303,11 @@ export default function UserAdmin({ onClose, currentUserId }: { onClose: () => v
           <div className="ua-modal-mask" onClick={() => setResetTarget(null)}>
             <div className="ua-modal" onClick={(e) => e.stopPropagation()}>
               <h3>重置「{resetTarget.username}」的密码</h3>
-              <input
-                className="ua-input"
-                type="password"
-                placeholder="新密码（至少8位，含字母和数字）"
-                value={newPwd}
-                onChange={(e) => setNewPwd(e.target.value)}
-              />
+              <input className="ua-input" type="password" placeholder="新密码（至少8位，含字母和数字）" value={newPwd}
+                onChange={(e) => setNewPwd(e.target.value)} />
               <div className="ua-modal-actions">
                 <button className="ua-btn-sm" onClick={() => setResetTarget(null)}>取消</button>
-                <button
-                  className="ua-btn-primary"
-                  disabled={actionLoading === resetTarget.id || newPwd.length < 8}
-                  onClick={handleResetPwd}
-                >
+                <button className="ua-btn-primary" disabled={actionLoading === resetTarget.id || newPwd.length < 8} onClick={handleResetPwd}>
                   确认重置
                 </button>
               </div>
@@ -302,11 +324,7 @@ export default function UserAdmin({ onClose, currentUserId }: { onClose: () => v
               </p>
               <div className="ua-modal-actions">
                 <button className="ua-btn-sm" onClick={() => setDeleteTarget(null)}>取消</button>
-                <button
-                  className="ua-btn-primary ua-btn-danger-bg"
-                  disabled={actionLoading === deleteTarget.id}
-                  onClick={handleDelete}
-                >
+                <button className="ua-btn-primary ua-btn-danger-bg" disabled={actionLoading === deleteTarget.id} onClick={handleDelete}>
                   {actionLoading === deleteTarget.id ? '删除中…' : '确认删除'}
                 </button>
               </div>

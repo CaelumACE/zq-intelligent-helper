@@ -210,10 +210,11 @@ def ensure_admin_user():
         with factory() as session:
             exists = session.execute(select(User).where(User.username == "admin")).scalar_one_or_none()
             if not exists:
-                session.add(User(username="admin", password_hash=hash_password(settings.ADMIN_PASSWORD), role="admin"))
+                session.add(User(username="admin", password_hash=hash_password(settings.ADMIN_PASSWORD), role="super_admin"))
                 session.commit()
-            elif exists.role != "admin":
-                session.query(User).filter(User.username == "admin").update({"role": "admin"})
+            elif exists.role == "admin":
+                # 内置 admin 账号自动升级为超级管理员
+                session.query(User).filter(User.username == "admin").update({"role": "super_admin"})
                 session.commit()
     except Exception as exc:
         logger.warning(f"预置 admin 用户失败: {exc}")
@@ -417,7 +418,7 @@ def list_users(keyword: str = "", page: int = 1, page_size: int = 20) -> dict:
         total = session.scalar(select(func.count()).select_from(query.order_by(None).subquery()))
         # 排序：管理员在前 → 最近登录时间倒序（从未登录的排最后）→ ID 升序
         from sqlalchemy import case
-        role_order = case((User.role == "admin", 0), else_=1)
+        role_order = case((User.role == "super_admin", 0), (User.role == "admin", 1), else_=2)
         rows = session.execute(
             query.order_by(
                 role_order,

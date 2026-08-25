@@ -249,3 +249,10 @@
 .ua-btn-primary.ua-btn-danger-bg:hover {
   background: #b91c1c;
 }
+
+/* S03: 超级管理员徽章 */
+.ua-badge-super { background: linear-gradient(135deg, #f59e0b, #d97706); color: #fff; }
+/* 分页器每页条数选择器 */
+.ua-pager-controls { display: flex; align-items: center; gap: 8px; }
+.ua-page-size { padding: 4px 8px; border: 1px solid var(--border, #e5e7eb); border-radius: 6px; font-size: 12px; background: #fff; color: var(--text-1, #374151); cursor: pointer; }
+.ua-page-size:hover { border-color: #2563eb; }
