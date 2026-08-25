@@ -106,3 +106,39 @@ export interface AuthUser {
   username: string;
   role: string;
 }
+
+export interface CompareDoc {
+  title: string;
+  content: string;
+}
+
+export interface DiffItem {
+  type: 'added' | 'removed' | 'modified';
+  clause: string;
+  old_text: string;
+  new_text: string;
+  change_note: string;
+}
+
+export interface CompareResult {
+  task_id: string;
+  summary: {
+    added: number;
+    removed: number;
+    modified: number;
+    total_changes: number;
+    brief: string;
+  };
+  total_changes: number;
+  diffs: DiffItem[];
+}
+
+export interface KnowledgeItem {
+  id: number;
+  title: string;
+  category: string;
+  source: string;
+  status: string;
+  metadata: Record<string, unknown>;
+  content: string;
+}

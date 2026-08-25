@@ -165,7 +165,7 @@ def get_session_factory() -> sessionmaker:
 
 
 def ensure_demo_user():
-    """预置测试账号 demo / demo123，仅在不存在时创建。"""
+    """预置测试账号 demo / demo123，不存在则创建，存在则修复旧哈希。"""
     try:
         from app.services.auth_service import hash_password
 
@@ -175,6 +175,12 @@ def ensure_demo_user():
             if not exists:
                 session.add(User(username="demo", password_hash=hash_password("demo123"), role="user"))
                 session.commit()
+            else:
+                from app.services.auth_service import verify_password
+
+                if not verify_password("demo123", exists.password_hash):
+                    exists.password_hash = hash_password("demo123")
+                    session.commit()
     except Exception as exc:
         logger.warning(f"预置 demo 用户失败: {exc}")
 

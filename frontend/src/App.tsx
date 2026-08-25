@@ -7,6 +7,7 @@ import WelcomeScreen from './components/WelcomeScreen'
 import WritingPanel from './components/WritingPanel'
 import GuidePanel from './components/GuidePanel'
 import LoginModal from './components/LoginModal'
+import ComparePanel from './components/ComparePanel'
 import type { AuthUser, Message, Conversation, Reference, ModelProvider, WritingRequest } from './types'
 import './App.css'
 
@@ -22,7 +23,7 @@ function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [model, setModel] = useState<ModelProvider>('deepseek')
   const [writingOpen, setWritingOpen] = useState(false)
-  const [activePanel, setActivePanel] = useState<'qa' | 'guide'>('qa')
+  const [activePanel, setActivePanel] = useState<'qa' | 'guide' | 'compare'>('qa')
   const [loginOpen, setLoginOpen] = useState(false)
   const [token, setToken] = useState<string | null>(() => localStorage.getItem('token'))
   const [user, setUser] = useState<AuthUser | null>(() => {
@@ -394,6 +395,7 @@ function App() {
         <div className="app-tabs">
           <button className={activePanel === 'qa' ? 'app-tab active' : 'app-tab'} onClick={() => setActivePanel('qa')}>智能问答</button>
           <button className={activePanel === 'guide' ? 'app-tab active' : 'app-tab'} onClick={() => setActivePanel('guide')}>我要办事</button>
+          <button className={activePanel === 'compare' ? 'app-tab active' : 'app-tab'} onClick={() => setActivePanel('compare')}>政策比对</button>
           <div className="app-tabs-right">
             {user ? (
               <>
@@ -409,6 +411,10 @@ function App() {
         {activePanel === 'guide' ? (
           <div className="guide-panel">
             <GuidePanel token={token} onRequireLogin={() => setLoginOpen(true)} />
+          </div>
+        ) : activePanel === 'compare' ? (
+          <div className="guide-panel">
+            <ComparePanel token={token} userRole={user?.role} onRequireLogin={() => setLoginOpen(true)} />
           </div>
         ) : (
           <>
