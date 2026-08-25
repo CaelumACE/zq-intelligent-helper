@@ -18,8 +18,10 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
     create_engine,
     func,
+    inspect,
     select,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
@@ -41,7 +43,10 @@ class User(Base):
     username: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String(256), nullable=False)
     role: Mapped[str] = mapped_column(String(32), default="user", nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    token_version: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_login: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class GuideTheme(Base):
@@ -120,6 +125,7 @@ def init_guide_db() -> bool:
     try:
         session_factory = _ensure_engine()
         Base.metadata.create_all(_engine)
+        ensure_user_columns()
         with session_factory() as session:
             themes = _load_seed().get("themes", [])
             if session.scalar(select(func.count()).select_from(GuideTheme)) == 0 and themes:
@@ -177,6 +183,7 @@ def ensure_demo_user():
             return
         _ensure_engine()
         Base.metadata.create_all(_engine)
+        ensure_user_columns()
         factory = get_session_factory()
         with factory() as session:
             exists = session.execute(select(User).where(User.username == "demo")).scalar_one_or_none()
@@ -198,6 +205,7 @@ def ensure_admin_user():
 
         _ensure_engine()
         Base.metadata.create_all(_engine)
+        ensure_user_columns()
         factory = get_session_factory()
         with factory() as session:
             exists = session.execute(select(User).where(User.username == "admin")).scalar_one_or_none()
@@ -302,10 +310,10 @@ def _step_full(s: GuideStep) -> dict:
     }
 
 
-def create_user(username: str, password_hash: str) -> dict:
+def create_user(username: str, password_hash: str, role: str = "user", is_active: bool = True) -> dict:
     session_factory = _ensure_engine()
     with session_factory() as session:
-        user = User(username=username, password_hash=password_hash, role="user")
+        user = User(username=username, password_hash=password_hash, role=role, is_active=is_active)
         session.add(user)
         try:
             session.commit()
@@ -331,7 +339,15 @@ def get_user(user_id: int) -> Optional[dict]:
 
 
 def _user_dict(u: User) -> dict:
-    return {"id": u.id, "username": u.username, "role": u.role}
+    return {
+        "id": u.id,
+        "username": u.username,
+        "role": u.role,
+        "is_active": bool(u.is_active),
+        "token_version": int(u.token_version or 0),
+        "created_at": u.created_at.isoformat() if u.created_at else None,
+        "last_login": u.last_login.isoformat() if u.last_login else None,
+    }
 
 
 def get_progress(user_id: int, theme_id: str) -> dict:
@@ -366,3 +382,84 @@ def set_progress(user_id: int, theme_id: str, step_id: str, status: str) -> dict
             )
         session.commit()
         return {"theme_id": theme_id, "step_id": step_id, "status": status}
+
+
+def ensure_user_columns() -> None:
+    """为旧库补齐 S03 新增列，兼容 SQLite/PG 已存在列的场景。"""
+    try:
+        session_factory = _ensure_engine()
+        inspector = inspect(_engine)
+        columns = {c["name"] for c in inspector.get_columns(User.__tablename__)}
+        statements = []
+        if "is_active" not in columns:
+            statements.append("ALTER TABLE users ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT 1")
+        if "token_version" not in columns:
+            statements.append("ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0")
+        if "last_login" not in columns:
+            statements.append("ALTER TABLE users ADD COLUMN last_login TIMESTAMP")
+        if not statements:
+            return
+        with _engine.begin() as conn:
+            for sql in statements:
+                conn.execute(text(sql))
+        logger.info("用户表 S03 字段迁移完成: %s", ", ".join(statements))
+    except Exception as exc:
+        logger.warning(f"用户表 S03 字段迁移失败，将由 ORM 新建表兜底: {exc}")
+
+
+def list_users(keyword: str = "", page: int = 1, page_size: int = 20) -> dict:
+    keyword = (keyword or "").strip()
+    session_factory = _ensure_engine()
+    with session_factory() as session:
+        query = select(User)
+        if keyword:
+            query = query.where(User.username.icontains(keyword))
+        total = session.scalar(select(func.count()).select_from(query.order_by(None).subquery()))
+        rows = session.execute(query.order_by(User.id).offset((page - 1) * page_size).limit(page_size)).scalars().all()
+        return {"items": [_user_dict(u) for u in rows], "total": total or 0, "page": page, "page_size": page_size}
+
+
+def update_user(user_id: int, role: str | None = None, is_active: bool | None = None) -> Optional[dict]:
+    session_factory = _ensure_engine()
+    with session_factory() as session:
+        user = session.get(User, user_id)
+        if not user:
+            return None
+        if role is not None:
+            user.role = role
+        if is_active is not None:
+            user.is_active = is_active
+        session.commit()
+        session.refresh(user)
+        return _user_dict(user)
+
+
+def reset_password(user_id: int, password_hash: str) -> Optional[dict]:
+    session_factory = _ensure_engine()
+    with session_factory() as session:
+        user = session.get(User, user_id)
+        if not user:
+            return None
+        user.password_hash = password_hash
+        user.token_version = int(user.token_version or 0) + 1
+        session.commit()
+        session.refresh(user)
+        return _user_dict(user)
+
+
+def bump_token_version(user_id: int) -> bool:
+    session_factory = _ensure_engine()
+    with session_factory() as session:
+        user = session.get(User, user_id)
+        if not user:
+            return False
+        user.token_version = int(user.token_version or 0) + 1
+        session.commit()
+        return True
+
+
+def set_last_login(user_id: int, at: datetime) -> None:
+    session_factory = _ensure_engine()
+    with session_factory() as session:
+        session.query(User).filter(User.id == user_id).update({"last_login": at})
+        session.commit()

@@ -1,19 +1,34 @@
 """JWT 登录/注册/当前用户。"""
-from fastapi import APIRouter, Depends, HTTPException
+from collections import defaultdict
+from datetime import datetime, timezone
+from time import monotonic
+
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 
-from app.services.auth_service import create_token, decode_token, verify_password
+from app.services.auth_service import create_token, decode_token, hash_password, verify_password
 from app.services.guide_store import (
     User,
+    bump_token_version,
     get_session_factory,
     get_user,
     get_user_by_username,
+    set_last_login,
 )
 
 router = APIRouter()
 bearer = HTTPBearer(auto_error=False)
+
+_login_failures: defaultdict[str, list] = defaultdict(list)
+LOGIN_FAIL_MAX = 5
+LOGIN_FAIL_LOCK_SECONDS = 15 * 60
+
+def _strong_password(value: str) -> str:
+    if len(value) < 8 or not any(ch.isalpha() for ch in value) or not any(ch.isdigit() for ch in value):
+        raise ValueError("密码至少 8 位，且必须同时包含字母和数字")
+    return value
 
 
 class RegisterRequest(BaseModel):
@@ -26,10 +41,41 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class ChangePasswordRequest(BaseModel):
+    old_password: str
+    new_password: str
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_new_password(cls, value: str) -> str:
+        try:
+            return _strong_password(value)
+        except ValueError as exc:
+            raise ValueError(str(exc)) from exc
+
+
+class LibraryUser(BaseModel):
+    id: int
+    username: str
+    role: str
+    is_active: bool = True
+    token_version: int = 0
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "LibraryUser":
+        return cls(**data)
+
+
 class UserOut(BaseModel):
     id: int
     username: str
     role: str
+    is_active: bool = True
+    token_version: int = 0
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "UserOut":
+        return cls(**data)
 
 
 def _user_hash(username: str) -> str | None:
@@ -49,7 +95,19 @@ def current_user(credentials: HTTPAuthorizationCredentials | None = Depends(bear
     user = get_user(user_id)
     if not user:
         raise HTTPException(status_code=401, detail="用户不存在")
-    return UserOut(**user)
+    if not user.get("is_active", True):
+        raise HTTPException(status_code=401, detail="账号已禁用，请联系管理员")
+    # 兼容旧 token 没有 tv；当前 token 版本与库中不一致则视为已被踢下线
+    if int(payload.get("tv", 0)) != int(user.get("token_version", 0)):
+        raise HTTPException(status_code=401, detail="登录已过期，请重新登录")
+    return UserOut.from_dict(user)
+
+
+def _login_locked(client_ip: str) -> bool:
+    now = monotonic()
+    failures = [t for t in _login_failures[client_ip] if now - t < LOGIN_FAIL_LOCK_SECONDS]
+    _login_failures[client_ip] = failures
+    return len(failures) >= LOGIN_FAIL_MAX
 
 
 @router.post("/register", response_model=dict)
@@ -59,14 +117,51 @@ async def register(body: RegisterRequest):
 
 
 @router.post("/login", response_model=dict)
-async def login(body: LoginRequest):
+async def login(body: LoginRequest, request: Request):
+    client_ip = request.client.host if request.client else "unknown"
+    if _login_locked(client_ip):
+        raise HTTPException(status_code=429, detail="登录失败次数过多，请15分钟后再试")
+
     user = get_user_by_username(body.username)
     password_hash = _user_hash(body.username)
     if not user or not password_hash or not verify_password(body.password, password_hash):
+        _login_failures[client_ip].append(monotonic())
         raise HTTPException(status_code=401, detail="用户名或密码错误")
-    return {"token": create_token(user["id"], user["username"], user["role"]), "user": user}
+    if not user.get("is_active", True):
+        raise HTTPException(status_code=401, detail="账号已禁用，请联系管理员")
+
+    _login_failures.pop(client_ip, None)
+    # 每次登录都递增版本号，使旧 token 立即失效，实现单点登录踢线。
+    new_version = int(user.get("token_version", 0)) + 1
+    bump_token_version(user["id"])
+    user["token_version"] = new_version
+    set_last_login(user["id"], datetime.now(timezone.utc))
+    return {"token": create_token(user["id"], user["username"], user["role"], new_version), "user": user}
 
 
 @router.get("/me", response_model=dict)
 async def me(user: UserOut = Depends(current_user)):
     return {"user": user.model_dump()}
+
+
+@router.post("/logout", response_model=dict)
+async def logout(user: UserOut = Depends(current_user)):
+    bump_token_version(user.id)
+    return {"message": "已退出登录"}
+
+
+@router.post("/change-password", response_model=dict)
+async def change_password(body: ChangePasswordRequest, user: UserOut = Depends(current_user)):
+    factory = get_session_factory()
+    with factory() as session:
+        row = session.get(User, user.id)
+        if not row:
+            raise HTTPException(status_code=404, detail="用户不存在")
+        if not verify_password(body.old_password, row.password_hash):
+            raise HTTPException(status_code=401, detail="原密码错误")
+        if verify_password(body.new_password, row.password_hash):
+            raise HTTPException(status_code=400, detail="新密码不能与旧密码相同")
+        row.password_hash = hash_password(body.new_password)
+        row.token_version = int(row.token_version or 0) + 1
+        session.commit()
+    return {"message": "密码已修改，请重新登录"}

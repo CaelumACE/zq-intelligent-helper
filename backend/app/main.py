@@ -11,7 +11,7 @@ from app.core.config import settings
 from app.core.logger import logger
 from app.services.vector_store import vector_store
 from app.api import chat, knowledge
-from app.routers import auth, compare, guide, kb_admin
+from app.routers import admin, auth, compare, guide, kb_admin
 from app.services import guide_store, kb_admin_store
 
 
@@ -21,9 +21,9 @@ async def lifespan(app: FastAPI):
     if vector_store.mode == "postgres":
         ok = vector_store.initialize_database()
         logger.info(f"pgvector 初始化: {'成功' if ok else '失败/降级内存'}")
+    guide_store.init_guide_db()
     guide_store.ensure_demo_user()
     guide_store.ensure_admin_user()
-    guide_store.init_guide_db()
     kb_admin_store.init_kb_db()
     yield
 
@@ -69,6 +69,7 @@ async def rate_limit_middleware(request: Request, call_next):
 app.include_router(chat.router, prefix="/api/chat", tags=["对话"])
 app.include_router(knowledge.router, prefix="/api/knowledge", tags=["知识库"])
 app.include_router(auth.router, prefix="/api/auth", tags=["认证"])
+app.include_router(admin.router, prefix="/api", tags=["管理员用户管理"])
 app.include_router(guide.router, prefix="/api/guide", tags=["导办"])
 app.include_router(compare.router, prefix="/api", tags=["比对"])
 app.include_router(kb_admin.router, prefix="/api", tags=["知识库后台"])

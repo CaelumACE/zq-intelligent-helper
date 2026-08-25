@@ -33,12 +33,13 @@ def verify_password(password: str, encoded: str) -> bool:
         return False
 
 
-def create_token(user_id: int, username: str, role: str) -> str:
+def create_token(user_id: int, username: str, role: str, token_version: int = 0) -> str:
     now = int(time.time())
     payload = {
         "sub": str(user_id),
         "username": username,
         "role": role,
+        "tv": int(token_version or 0),
         "iat": now,
         "exp": now + settings.JWT_EXPIRE_HOURS * 3600,
     }
