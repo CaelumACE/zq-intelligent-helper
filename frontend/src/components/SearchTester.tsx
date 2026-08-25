@@ -12,7 +12,7 @@ export default function SearchTester() {
     setError('')
     setResults([])
     try {
-      const res = await apiFetch(`${API_BASE}/knowledge/test-search?query=${encodeURIComponent(query)}&top_k=8`, { headers: authHeaders() })
+      const res = await apiFetch(`${API_BASE}/knowledge/test-search?query=${encodeURIComponent(query)}&top_k=8`, { method: 'POST', headers: authHeaders() })
       const data = await res.json()
       if (!res.ok) throw new Error(data.detail || '检索失败')
       setResults(data.results || [])
