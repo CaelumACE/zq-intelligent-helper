@@ -109,9 +109,9 @@ async def update_admin_user(user_id: int, body: AdminUserUpdate, user: UserOut =
         raise HTTPException(status_code=403, detail="仅超级管理员可授予管理员角色")
     if user.id == user_id:
         if body.is_active is False:
-            raise HTTPException(status_code=400, detail="不能禁用当前登录的管理员账号")
-        if body.role is not None and body.role != "admin":
-            raise HTTPException(status_code=400, detail="不能移除自己的管理员角色")
+            raise HTTPException(status_code=400, detail="不能禁用当前登录的账号")
+        if body.role is not None and body.role != user.role:
+            raise HTTPException(status_code=400, detail="不能修改自己的角色")
     item = update_user(user_id, role=body.role, is_active=body.is_active)
     return {"user": item}
 
@@ -122,6 +122,8 @@ async def reset_admin_password(user_id: int, body: AdminResetPassword, user: Use
     if not target:
         raise HTTPException(status_code=404, detail="用户不存在")
     _ensure_can_manage(target, user, action="重置")
+    if user.id == user_id:
+        raise HTTPException(status_code=400, detail="请通过修改密码功能更改自己的密码")
     item = reset_password(user_id, hash_password(body.new_password))
     return {"message": "密码已重置", "user": item}
 

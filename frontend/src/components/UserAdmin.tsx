@@ -243,7 +243,7 @@ export default function UserAdmin({ onClose, currentUserId, currentUserRole }: {
                               {u.role === 'admin' ? '降为普通' : '设为管理员'}
                             </button>
                           )}
-                          <button className="ua-btn-sm" disabled={locked} onClick={() => { setResetTarget(u); setNewPwd('') }}>
+                          <button className="ua-btn-sm" disabled={locked || isSelf} title={isSelf ? '请通过修改密码功能更改自己的密码' : ''} onClick={() => { setResetTarget(u); setNewPwd('') }}>
                             重置密码
                           </button>
                           <button
