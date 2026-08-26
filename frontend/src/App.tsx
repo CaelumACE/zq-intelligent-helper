@@ -532,7 +532,9 @@ function App() {
               messages={messages}
               isLoading={isLoading}
               isStreaming={isStreaming}
+              currentSessionId={currentSessionId}
               onStop={handleStop}
+              onRegenerate={(content) => handleSendMessage(content, undefined, true)}
               onFollowUp={(prompt) => handleSendMessage(prompt, undefined, true)}
             />
           )}

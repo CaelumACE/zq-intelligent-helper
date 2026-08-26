@@ -3,6 +3,7 @@ export interface Message {
   role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: number;
+  sessionId?: string;
   references?: Reference[];
   followUpChips?: string[];
   model?: string;
@@ -59,6 +60,7 @@ export type IconName =
   | 'square'
   | 'send'
   | 'plus'
+  | 'download'
   | 'x';
 
 export interface GuideMaterial {

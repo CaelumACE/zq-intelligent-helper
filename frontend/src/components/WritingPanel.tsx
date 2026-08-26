@@ -9,7 +9,7 @@ interface WritingPanelProps {
   model: ModelProvider
 }
 
-const DOC_TYPES = ['通知', '纪要', '报告', '请示']
+const DOC_TYPES = ['通知', '纪要', '报告', '请示', '函', '批复', '意见', '决定']
 
 export default function WritingPanel({ open, onClose, onGenerate, model }: WritingPanelProps) {
   const [docType, setDocType] = useState('通知')

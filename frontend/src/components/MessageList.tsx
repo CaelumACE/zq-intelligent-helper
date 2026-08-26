@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { Message } from '../types'
 import { copyText } from '../utils/clipboard'
 import { pickFollowUpChips, isRefusalReply } from '../utils/followUpChips'
+import { apiFetch, API_BASE } from '../utils/api'
 import MarkdownContent from './MarkdownContent'
 import Icon from './Icons'
 
@@ -12,6 +13,7 @@ interface MessageListProps {
   messages: Message[]
   isLoading: boolean
   isStreaming?: boolean
+  currentSessionId?: string | null
   onStop?: () => void
   onRegenerate?: (content: string) => void
   onFollowUp?: (prompt: string) => void
@@ -21,6 +23,7 @@ function MessageItem({
   message,
   isLatest,
   streaming = false,
+  sessionId,
   onRegenerate,
   onFollowUp,
   allMessages,
@@ -28,6 +31,7 @@ function MessageItem({
   message: Message
   isLatest: boolean
   streaming?: boolean
+  sessionId?: string | null
   onRegenerate?: (content: string) => void
   onFollowUp?: (prompt: string) => void
   allMessages: Message[]
@@ -35,15 +39,19 @@ function MessageItem({
   const [showRefs, setShowRefs] = useState(false)
   const [copied, setCopied] = useState(false)
   const [feedback, setFeedback] = useState<'up' | 'down' | null>(null)
+  const [feedbackSent, setFeedbackSent] = useState(false)
+  const [showDownComment, setShowDownComment] = useState(false)
+  const [downComment, setDownComment] = useState('')
   const [expanded, setExpanded] = useState(false)
+  const [exporting, setExporting] = useState(false)
   const isUser = message.role === 'user'
   const refusal = !isUser && isRefusalReply(message.content)
+  const isWriting = !isUser && message.status === 'writing'
   const isLong = !isUser && message.content.length > COLLAPSE_THRESHOLD
   const shownContent = isLong && !expanded
     ? message.content.slice(0, COLLAPSE_PREVIEW)
     : message.content
 
-  // 只在最新一条 AI 回复、且当前没有正在生成时显示 chip；后端下发的关联推荐优先
   const chips = !isUser && isLatest ? pickFollowUpChips(allMessages, message.followUpChips) : []
 
   const handleCopy = async () => {
@@ -52,11 +60,81 @@ function MessageItem({
     window.setTimeout(() => setCopied(false), 1600)
   }
 
+  const handleFeedback = async (rating: 'up' | 'down') => {
+    if (feedbackSent) return
+    if (rating === 'down') {
+      setShowDownComment(true)
+      setFeedback('down')
+      return
+    }
+    setFeedback('up')
+    try {
+      await apiFetch(`${API_BASE}/feedback`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          session_id: sessionId || message.sessionId || '',
+          message_id: message.id,
+          rating: 'up',
+        }),
+      })
+      setFeedbackSent(true)
+    } catch {
+      // silent
+    }
+  }
+
+  const submitDownFeedback = async () => {
+    try {
+      await apiFetch(`${API_BASE}/feedback`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          session_id: sessionId || message.sessionId || '',
+          message_id: message.id,
+          rating: 'down',
+          comment: downComment,
+        }),
+      })
+      setFeedbackSent(true)
+      setShowDownComment(false)
+    } catch {
+      // silent
+    }
+  }
+
+  const handleExportDocx = async () => {
+    if (exporting) return
+    setExporting(true)
+    try {
+      const res = await apiFetch(`${API_BASE}/chat/export-docx`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: message.content, title: '' }),
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      const firstLine = message.content.split('\n').find(l => l.trim().startsWith('#'))?.replace(/^#+\s*/, '').trim() || '公文'
+      a.download = `${firstLine}.docx`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      console.error('导出失败:', e)
+    } finally {
+      setExporting(false)
+    }
+  }
+
   return (
     <div className={`msg ${isUser ? 'user' : 'ai'}`}>
       <div className={isUser ? 'user-avatar' : `ai-avatar${streaming && !isUser ? ' streaming' : ''}`}>{isUser ? '我' : '政'}</div>
       <div className="msg-body">
-        <div className={isUser ? 'bubble-user' : 'bubble-ai'}>
+        <div className={`bubble-ai${isWriting ? ' writing-doc' : ''}`}>
           <MarkdownContent content={shownContent} />
           {isLong && !expanded && (
             <button className="collapse-toggle" onClick={() => setExpanded(true)}>展开全文</button>
@@ -68,24 +146,56 @@ function MessageItem({
         {!streaming && !refusal && (
           <div className="msg-actions">
             <button className="mini-btn" onClick={handleCopy}>{copied ? '✓ 已复制' : <><Icon name="copy" size={13} /> 复制</>}</button>
+            {isWriting && (
+              <button className="mini-btn export-btn" onClick={handleExportDocx} disabled={exporting}>
+                <Icon name="download" size={13} /> {exporting ? '导出中…' : '导出Word'}
+              </button>
+            )}
             {!isUser && (
               <>
-                <button className={`mini-btn ${feedback === 'up' ? 'active' : ''}`} onClick={() => setFeedback(feedback === 'up' ? null : 'up')}><Icon name="thumbs-up" size={13} /></button>
-                <button className={`mini-btn ${feedback === 'down' ? 'active' : ''}`} onClick={() => setFeedback(feedback === 'down' ? null : 'down')}><Icon name="thumbs-down" size={13} /></button>
+                <button
+                  className={`mini-btn ${feedback === 'up' ? 'active' : ''}`}
+                  onClick={() => handleFeedback('up')}
+                  disabled={feedbackSent}
+                  title="满意"
+                >
+                  <Icon name="thumbs-up" size={13} />
+                </button>
+                <button
+                  className={`mini-btn ${feedback === 'down' ? 'active' : ''}`}
+                  onClick={() => handleFeedback('down')}
+                  disabled={feedbackSent}
+                  title="不满意"
+                >
+                  <Icon name="thumbs-down" size={13} />
+                </button>
                 {onRegenerate && <button className="mini-btn" onClick={() => onRegenerate(message.content)}><Icon name="refresh" size={13} /> 重新生成</button>}
               </>
             )}
             {!isUser && message.model && <span className="stream-meta">已完成 · {message.model === 'minimax' ? 'MiniMax' : 'DeepSeek'}</span>}
           </div>
         )}
+        {!isUser && showDownComment && !feedbackSent && (
+          <div className="feedback-comment">
+            <textarea
+              value={downComment}
+              onChange={e => setDownComment(e.target.value)}
+              placeholder="请描述问题或改进建议…"
+              rows={2}
+            />
+            <div className="feedback-comment-actions">
+              <button className="mini-btn" onClick={() => { setShowDownComment(false); setFeedback(null) }}>取消</button>
+              <button className="mini-btn primary" onClick={submitDownFeedback}>提交</button>
+            </div>
+          </div>
+        )}
+        {!isUser && feedbackSent && (
+          <span className="feedback-thanks">感谢反馈</span>
+        )}
         {!isUser && chips.length > 0 && (
           <div className="followup-row">
             {chips.map((chip) => (
-              <button
-                key={chip}
-                className="followup-chip"
-                onClick={() => onFollowUp?.(chip)}
-              >
+              <button key={chip} className="followup-chip" onClick={() => onFollowUp?.(chip)}>
                 {chip}
               </button>
             ))}
@@ -114,12 +224,9 @@ function MessageItem({
   )
 }
 
-export default function MessageList({ messages, isLoading, isStreaming = false, onStop, onRegenerate, onFollowUp }: MessageListProps) {
-  // isLoading 只在“尚未产出第一个字”时显示占位气泡；
-  // isStreaming 表示正在流式输出，此时不显示占位气泡，避免双气泡。
+export default function MessageList({ messages, isLoading, isStreaming = false, currentSessionId, onStop, onRegenerate, onFollowUp }: MessageListProps) {
   const active = isLoading || isStreaming
 
-  // 找到最新的 AI 消息 id（用于 chip 仅显示在最新一条下方）
   const latestAiId = (() => {
     for (let i = messages.length - 1; i >= 0; i--) {
       if (messages[i].role === 'assistant') return messages[i].id
@@ -127,8 +234,6 @@ export default function MessageList({ messages, isLoading, isStreaming = false, 
     return null
   })()
 
-  // 只在「最新一条 AI 已产出首字但尚未结束」时，给最新气泡转发圈；
-  // 已完成的旧气泡不再保持旋转，避免出现几条 AI 回复同时转圈。
   const streamingLatestId = isStreaming && !isLoading && latestAiId != null ? latestAiId : null
 
   return (
@@ -139,6 +244,7 @@ export default function MessageList({ messages, isLoading, isStreaming = false, 
           message={msg}
           isLatest={!active && msg.id === latestAiId}
           streaming={msg.id === streamingLatestId}
+          sessionId={currentSessionId}
           onRegenerate={onRegenerate}
           onFollowUp={onFollowUp}
           allMessages={messages}

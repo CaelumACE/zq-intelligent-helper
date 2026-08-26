@@ -8,7 +8,7 @@ interface WelcomeScreenProps {
 
 const CAPABILITIES = [
   { dot: 'policy', text: '政策问答', suffix: ' · 有出处可溯源' },
-  { dot: 'writing', text: '公文写作', suffix: ' · 4类公文一键生成' },
+  { dot: 'writing', text: '公文写作', suffix: ' · 8类公文一键生成' },
   { dot: 'guide', text: '流程导引', suffix: ' · 材料地点一次说清' },
 ]
 
