@@ -771,35 +771,32 @@ async def chat_stream(request: ChatRequest, user: UserOut = Depends(current_user
         accumulated: List[str] = []
         primary_provider = request.provider or settings.LLM_PROVIDER
 
-        async def stream_provider(provider: str, status: dict):
-            """流式输出单个通道的文本增量，结果写入 status['ok']。"""
+        # 主通道流式生成
+        stream_ok = False
+        try:
+            async for delta in await llm_service.chat(messages, stream=True, provider=primary_provider):
+                if delta:
+                    accumulated.append(delta)
+                    yield f"data: {json.dumps({'type': 'delta', 'content': delta}, ensure_ascii=False)}\n\n"
+            if accumulated:
+                stream_ok = True
+        except Exception as e:
+            logger.warning(f"provider={primary_provider} 流式失败: {e}")
+
+        # 主通道失败或无输出时切换兜底通道
+        if not stream_ok:
+            if primary_provider == settings.LLM_FALLBACK_PROVIDER:
+                fallback_provider = settings.LLM_PROVIDER
+            else:
+                fallback_provider = settings.LLM_FALLBACK_PROVIDER
+            accumulated.clear()
             try:
-                async for delta in await llm_service.chat(messages, stream=True, provider=provider):
+                async for delta in await llm_service.chat(messages, stream=True, provider=fallback_provider):
                     if delta:
                         accumulated.append(delta)
                         yield f"data: {json.dumps({'type': 'delta', 'content': delta}, ensure_ascii=False)}\n\n"
-                status['ok'] = True
-            except Exception as e:
-                logger.warning(f"provider={provider} 流式失败: {e}")
-                status['ok'] = False
-
-        # 主通道生成；失败或无输出时切换兜底通道
-        status = {'ok': False}
-        async for event in stream_provider(primary_provider, status):
-            yield event
-
-        if primary_provider == settings.LLM_FALLBACK_PROVIDER:
-            fallback_candidates = [settings.LLM_PROVIDER]
-        else:
-            fallback_candidates = [settings.LLM_FALLBACK_PROVIDER]
-
-        for fallback_provider in fallback_candidates:
-            if status['ok'] and accumulated:
-                break
-            accumulated.clear()
-            status = {'ok': False}
-            async for event in stream_provider(fallback_provider, status):
-                yield event
+            except Exception as e2:
+                logger.warning(f"fallback provider={fallback_provider} 流式也失败: {e2}")
 
         # 双通道都不可用时，仅罗列知识库原文，不编造
         if not accumulated:
