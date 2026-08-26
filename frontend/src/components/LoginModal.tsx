@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { apiFetch, API_BASE } from '../utils/api'
+import { API_BASE } from '../utils/api'
 import type { AuthUser } from '../types'
 
 interface LoginModalProps {
@@ -14,12 +14,6 @@ export default function LoginModal({ onLogin, onClose, fullscreen }: LoginModalP
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-  const [showChangePwd, setShowChangePwd] = useState(false)
-  const [oldPwd, setOldPwd] = useState('')
-  const [newPwd, setNewPwd] = useState('')
-  const [pwdMsg, setPwdMsg] = useState('')
-  const [pwdError, setPwdError] = useState('')
-  const [pwdLoading, setPwdLoading] = useState(false)
 
   const submit = async () => {
     setError('')
@@ -45,34 +39,17 @@ export default function LoginModal({ onLogin, onClose, fullscreen }: LoginModalP
     }
   }
 
-  const handleChangePwd = async () => {
-    setPwdError('')
-    setPwdMsg('')
-    if (newPwd.length < 8) { setPwdError('新密码至少8位，含字母和数字'); return }
-    setPwdLoading(true)
-    try {
-      const res = await apiFetch(`${API_BASE}/auth/change-password`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ old_password: oldPwd, new_password: newPwd }),
-      })
-      const data = await res.json()
-      if (!res.ok) { setPwdError(data.detail || '修改失败'); return }
-      setPwdMsg('密码已修改，请用新密码重新登录')
-      setOldPwd('')
-      setNewPwd('')
-    } catch {
-      setPwdError('网络异常')
-    } finally {
-      setPwdLoading(false)
-    }
-  }
-
   const card = (
     <div className={fullscreen ? 'login-fs-card' : 'login-card'} onClick={(e) => e.stopPropagation()}>
       {fullscreen ? (
         <div className="login-fs-logo">
-          <div className="login-fs-mark">政</div>
+          <div className="login-fs-mark">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 21h18"/>
+              <path d="M5 21V7l7-4 7 4v14"/>
+              <path d="M9 21v-6h6v6"/>
+            </svg>
+          </div>
           <div className="login-fs-title">政企智能助手</div>
           <div className="login-fs-sub">安全登录</div>
         </div>
@@ -104,27 +81,6 @@ export default function LoginModal({ onLogin, onClose, fullscreen }: LoginModalP
         <button className="login-cancel" onClick={onClose} style={{ marginTop: 8, background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', fontSize: 13, width: '100%' }}>
           取消
         </button>
-      )}
-
-      <div style={{ marginTop: 16, textAlign: 'center' }}>
-        <button
-          onClick={() => { setShowChangePwd(!showChangePwd); setPwdMsg(''); setPwdError('') }}
-          style={{ background: 'none', border: 'none', color: '#2563eb', cursor: 'pointer', fontSize: 12 }}
-        >
-          {showChangePwd ? '返回登录' : '修改密码'}
-        </button>
-      </div>
-
-      {showChangePwd && (
-        <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid #e5e7eb' }}>
-          <input className="login-input" type="password" placeholder="原密码" value={oldPwd} onChange={(e) => setOldPwd(e.target.value)} />
-          <input className="login-input" type="password" placeholder="新密码（至少8位，含字母数字）" value={newPwd} onChange={(e) => setNewPwd(e.target.value)} />
-          {pwdError && <div className="login-error">{pwdError}</div>}
-          {pwdMsg && <div style={{ color: '#10b981', fontSize: 12, marginBottom: 8 }}>{pwdMsg}</div>}
-          <button className="login-submit" disabled={pwdLoading} onClick={handleChangePwd} style={{ background: '#059669' }}>
-            {pwdLoading ? '处理中…' : '确认修改'}
-          </button>
-        </div>
       )}
     </div>
   )

@@ -114,6 +114,8 @@ body {
   background: linear-gradient(135deg, #C8A45A, #D4AF37); color: #fff;
 }
 .side-foot-badge-admin { background: rgba(200,164,90,.15); color: #8A6D2B; }
+.side-foot-actions { display: flex; gap: 8px; }
+.side-foot-actions .side-foot-btn { flex: 1; }
 .side-foot-btn {
   width: 100%; padding: 7px 0; border: 1px solid rgba(0,0,0,.12); border-radius: var(--r-md);
   background: rgba(255,255,255,.6); color: #56627A; font-size: 12px; font-weight: 500;

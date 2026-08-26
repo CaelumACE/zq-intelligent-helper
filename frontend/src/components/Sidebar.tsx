@@ -11,6 +11,7 @@ interface SidebarProps {
   deletingId?: string | null
   user?: AuthUser | null
   onOpenUserAdmin?: () => void
+  onChangePassword?: () => void
 }
 
 interface Group {
@@ -50,6 +51,7 @@ export default function Sidebar({
   deletingId,
   user,
   onOpenUserAdmin,
+  onChangePassword,
 }: SidebarProps) {
   const groups = useMemo(() => groupByDate(conversations), [conversations])
 
@@ -122,11 +124,18 @@ export default function Sidebar({
               {user.role === 'super_admin' && <span className="side-foot-badge side-foot-badge-super">超管</span>}
               {user.role === 'admin' && <span className="side-foot-badge side-foot-badge-admin">管理员</span>}
             </div>
-            {(user.role === 'admin' || user.role === 'super_admin') && onOpenUserAdmin && (
-              <button className="side-foot-btn" onClick={onOpenUserAdmin}>
-                用户管理
-              </button>
-            )}
+            <div className="side-foot-actions">
+              {(user.role === 'admin' || user.role === 'super_admin') && onOpenUserAdmin && (
+                <button className="side-foot-btn" onClick={onOpenUserAdmin}>
+                  用户管理
+                </button>
+              )}
+              {onChangePassword && (
+                <button className="side-foot-btn" onClick={onChangePassword}>
+                  修改密码
+                </button>
+              )}
+            </div>
           </div>
         ) : (
           <span>未登录</span>

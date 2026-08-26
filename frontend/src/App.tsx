@@ -8,6 +8,7 @@ import WritingPanel from './components/WritingPanel'
 import GuidePanel from './components/GuidePanel'
 import LoginModal from './components/LoginModal'
 import UserAdmin from './components/UserAdmin'
+import ChangePasswordModal from './components/ChangePasswordModal'
 import ComparePanel from './components/ComparePanel'
 import { apiFetch, setUnauthorizedHandler } from './utils/api'
 import type { AuthUser, Message, Conversation, Reference, ModelProvider, WritingRequest } from './types'
@@ -41,6 +42,7 @@ function App() {
   const [loginOpen, setLoginOpen] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [userAdminOpen, setUserAdminOpen] = useState(false)
+  const [changePwdOpen, setChangePwdOpen] = useState(false)
   const [token, setToken] = useState<string | null>(() => sessionStorage.getItem('token'))
   const [user, setUser] = useState<AuthUser | null>(() => {
     const raw = sessionStorage.getItem('user')
@@ -467,6 +469,7 @@ function App() {
           deletingId={deletingId}
           user={user}
           onOpenUserAdmin={() => setUserAdminOpen(true)}
+          onChangePassword={() => setChangePwdOpen(true)}
         />
       </div>
 
@@ -484,6 +487,7 @@ function App() {
           deletingId={deletingId}
           user={user}
           onOpenUserAdmin={() => setUserAdminOpen(true)}
+          onChangePassword={() => setChangePwdOpen(true)}
         />
       </div>
 
@@ -564,6 +568,19 @@ function App() {
         {userAdminOpen && user && (user.role === 'admin' || user.role === 'super_admin') && (
           <UserAdmin onClose={() => setUserAdminOpen(false)} currentUserId={user.id} currentUserRole={user.role} />
         )}
+        {changePwdOpen && (
+          <ChangePasswordModal
+            onClose={() => setChangePwdOpen(false)}
+            onSuccess={() => {
+              sessionStorage.removeItem('token')
+              sessionStorage.removeItem('user')
+              setToken(null)
+              setUser(null)
+              setChangePwdOpen(false)
+            }}
+          />
+        )}
+
         {userAdminOpen && user && user.role === 'user' && (
           <div className="ua-overlay" onClick={() => setUserAdminOpen(false)}>
             <div className="ua-panel" onClick={(e) => e.stopPropagation()} style={{maxWidth:380,textAlign:'center',padding:'32px 28px'}}>
