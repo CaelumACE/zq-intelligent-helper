@@ -18,8 +18,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.backend
-    ports:
-      - "8000:8000"
+    # 不直接向宿主机/公网暴露后端端口，统一经 nginx 反代访问
+    expose:
+      - "8000"
     environment:
       - LLM_PROVIDER=${LLM_PROVIDER:-minimax}
       - LLM_FALLBACK_PROVIDER=${LLM_FALLBACK_PROVIDER:-deepseek}
@@ -31,6 +32,8 @@ services:
       - DEEPSEEK_BASE_URL=${DEEPSEEK_BASE_URL:-https://api.deepseek.com/v1}
       - JWT_SECRET=${JWT_SECRET:-}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
+      - SUPER_ADMIN_USERNAME=${SUPER_ADMIN_USERNAME:-super_admin}
+      - SUPER_ADMIN_PASSWORD=${SUPER_ADMIN_PASSWORD:-}
       - DEMO_ENABLED=${DEMO_ENABLED:-0}
       - DEMO_PASSWORD=${DEMO_PASSWORD:-}
       - DATABASE_URL=postgresql+psycopg2://gov:${POSTGRES_PASSWORD:-gov123456}@postgres:5432/gov_assistant

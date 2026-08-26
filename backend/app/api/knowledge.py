@@ -1,11 +1,13 @@
 """知识库 API"""
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
 from app.core.config import settings
 from app.core.logger import logger
 from app.services.knowledge_service import knowledge_service
 from app.services.vector_store import vector_store
+from app.routers.auth import current_user
+from app.routers.admin import admin_required
 
 router = APIRouter()
 
@@ -24,7 +26,7 @@ class KnowledgeStats(BaseModel):
 
 
 @router.get("/documents", response_model=List[Document])
-async def list_documents():
+async def list_documents(user = Depends(current_user)):
     """获取知识库文档列表"""
     try:
         all_docs = []
@@ -63,7 +65,7 @@ async def list_documents():
 
 
 @router.get("/stats", response_model=KnowledgeStats)
-async def get_stats():
+async def get_stats(user = Depends(current_user)):
     """获取知识库统计"""
     try:
         policies = knowledge_service.documents.get('policies', [])
@@ -91,7 +93,7 @@ async def get_stats():
 
 
 @router.get("/rag/status")
-async def rag_status():
+async def rag_status(user = Depends(current_user)):
     """RAG 存储与向量池状态探测。"""
     try:
         vector_status = vector_store.status()
@@ -108,7 +110,7 @@ async def rag_status():
 
 
 @router.get("/search")
-async def search_knowledge(query: str, top_k: int = 5):
+async def search_knowledge(query: str, top_k: int = 5, user = Depends(current_user)):
     """搜索知识库（复用统一检索服务）"""
     try:
         results = knowledge_service.search(query, top_k=min(top_k, 20))
@@ -131,7 +133,7 @@ async def search_knowledge(query: str, top_k: int = 5):
 
 
 @router.post("/reindex")
-async def reindex():
+async def reindex(user = Depends(admin_required)):
     """强制重建语义向量索引并同步到 pgvector（首次部署或数据更新后调用）。"""
     try:
         knowledge_service._corpus_ready = False

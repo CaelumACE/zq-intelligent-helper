@@ -50,8 +50,13 @@ class Settings:
             ADMIN_PASSWORD,
         )
     # 超级管理员：凌驾于普通管理员之上，不可被其他管理员删除/修改。
+    # 密码不再提供任何代码默认值：未配置时拒绝启动，首次部署必须显式写入 .env。
     SUPER_ADMIN_USERNAME = _env("SUPER_ADMIN_USERNAME") or "super_admin"
-    SUPER_ADMIN_PASSWORD = _env("SUPER_ADMIN_PASSWORD") or "5211314hao"
+    SUPER_ADMIN_PASSWORD = _env("SUPER_ADMIN_PASSWORD")
+    if not SUPER_ADMIN_PASSWORD:
+        raise RuntimeError(
+            "SUPER_ADMIN_PASSWORD 未配置，服务拒绝启动。请复制 .env.example（建议改为强密码）并填入 SUPER_ADMIN_PASSWORD。"
+        )
 
     # demo 演示账号默认关闭；如需启用请用 DEMO_ENABLED=1 并设置 DEMO_PASSWORD。
     DEMO_ENABLED = os.getenv('DEMO_ENABLED', '0') == '1'
