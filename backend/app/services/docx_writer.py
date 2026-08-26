@@ -6,6 +6,7 @@
 import io
 import os
 import re
+from functools import lru_cache
 from pathlib import Path
 from typing import Iterable, List, Optional
 
@@ -44,6 +45,7 @@ _FONT_DIRS = (
 )
 
 
+@lru_cache(maxsize=1)
 def _installed_font_files() -> List[str]:
     """扫描系统字体目录，返回已安装字体文件名列表（小写）。失败时返回空列表。"""
     names: List[str] = []

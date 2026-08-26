@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 
 from app.models import ChatRequest, ChatResponse, Reference, ChatMessage
@@ -955,8 +955,8 @@ async def export_docx(body: ExportDocxRequest, user: UserOut = Depends(current_u
     headers = {
         "Content-Disposition": f"attachment; filename=\"{ascii_fallback}.docx\"; filename*=UTF-8''{encoded}.docx"
     }
-    return StreamingResponse(
-        iter([docx_bytes]),
+    return Response(
+        content=docx_bytes,
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         headers=headers,
     )
@@ -974,6 +974,19 @@ async def submit_feedback(body: FeedbackRequest, user: UserOut = Depends(current
         raise HTTPException(status_code=400, detail="rating 必须为 up 或 down")
     if not body.session_id:
         raise HTTPException(status_code=400, detail="session_id 不能为空")
+
+    # 校验会话归属权：A 用户不能给 B 用户的会话写反馈
+    session = session_store.get(body.session_id, user_id=user.id)
+    if not session:
+        raise HTTPException(status_code=404, detail="会话不存在或无权访问")
+
+    # 幂等：同一 session_id + message_id + user_id 已有反馈则拒绝重复提交
+    if pg_store.has_feedback(
+        session_id=body.session_id,
+        message_id=body.message_id or "",
+        user_id=user.id,
+    ):
+        raise HTTPException(status_code=409, detail="该内容已提交过反馈，请勿重复提交")
 
     ok = pg_store.insert_feedback(
         session_id=body.session_id,

@@ -128,6 +128,29 @@ class PGStore:
             },
         )
 
+    def has_feedback(self, session_id: str, message_id: str, user_id: str) -> bool:
+        """检查同一 session+message+user 是否已提交过反馈（幂等用）。PG 不可用时返回 False（不阻断）。"""
+        if not self.ensure_schema():
+            return False
+        try:
+            with self._ensure_engine().begin() as conn:
+                row = conn.execute(
+                    text(
+                        "SELECT 1 FROM feedback_logs "
+                        "WHERE session_id = :session_id AND message_id = :message_id "
+                        "AND payload::text LIKE :user_pattern LIMIT 1"
+                    ),
+                    {
+                        "session_id": session_id,
+                        "message_id": message_id,
+                        "user_pattern": f'%"user_id": "{user_id}"%',
+                    },
+                ).fetchone()
+                return row is not None
+        except Exception as exc:
+            logger.warning(f"反馈查重查询失败（降级为不拦截）: {exc}")
+            return False
+
     def save_documents(self, documents: Dict[str, List[Any]]) -> bool:
         if not self.ensure_schema():
             return False
