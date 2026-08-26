@@ -2,20 +2,25 @@
 import json
 import re
 import time
+import uuid
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 
 from app.models import ChatRequest, ChatResponse, Reference, ChatMessage
 from app.routers.auth import UserOut, current_user
 from app.services.knowledge_service import knowledge_service
 from app.services.llm_service import LLMService
 from app.services.session_store import session_store
+from app.services.pg_store import pg_store
+from app.services.docx_writer import build_writing_docx
 from app.services.retrieval_log import log_retrieval
 from app.core.config import settings
 from app.core.logger import logger
+from urllib.parse import quote
 
 router = APIRouter()
 
@@ -43,6 +48,66 @@ WRITING_PROMPT_EXTRA = """
 {style}
 
 要求：先输出一句“以下为参考草稿，请根据实际情况审核修改后下发。”再按国标公文格式排版（标题居中、主送机关顶格、正文分段、落款和日期右对齐）。"""
+
+WRITING_REVISE_PROMPT_EXTRA = (
+    "用户正在对已生成的公文进行修改。请基于以下公文原文，只修改用户要求的部分，"
+    "其他内容保持不变。输出完整的修改后公文（按国标公文格式排版：标题居中、"
+    "主送机关顶格、正文分段、落款和日期右对齐）。"
+)
+
+# 公文修改意图关键词：上一轮为公文写作时，命中即进入 writing_revise 模式
+WRITING_REVISE_KEYWORDS = (
+    "改", "修改", "加", "补充", "增", "删除", "去掉", "删去", "移除",
+    "调整", "语气", "格式", "标题", "正文", "落款", "日期", "主送",
+    "加一段", "改成", "换", "缩写", "扩写", "润色", "精简", "完善",
+    "加上", "删掉", "改一下", "重新写", "重写",
+)
+
+# 明显是全新写作请求的触发词（即使上一轮是公文，也优先当作新写作）
+NEW_WRITING_TRIGGERS = ("帮我写", "请写", "撰写一", "生成一", "起草一", "写一份", "写一篇")
+
+
+def _msg_get(msg, key, default=None):
+    if isinstance(msg, dict):
+        return msg.get(key, default)
+    return getattr(msg, key, default)
+
+
+def _latest_writing_assistant(session_id: str, user_id=None) -> Optional[dict]:
+    """从持久化会话历史中读取最近一条 status=writing 的 assistant 消息。"""
+    history = session_store.get_history(session_id, limit=50, user_id=user_id)
+    for msg in reversed(history):
+        if _msg_get(msg, "role") == "assistant" and _msg_get(msg, "status") == "writing":
+            content = _msg_get(msg, "content", "") or ""
+            if content.strip():
+                mid = _msg_get(msg, "id")
+                return {"content": content, "id": mid}
+    return None
+
+
+def _detect_writing_revise(message: str, session_id: str, user_id=None) -> Optional[dict]:
+    """判断是否进入公文修改模式。
+
+    条件：会话中最近一条 assistant 消息 status 为 writing，且用户消息不是全新
+    写作请求，并包含修改类关键词。命中返回公文原文 dict，否则 None。
+    所有上下文均从数据库 session_store 读取，多 worker / 重启安全。
+    """
+    if not message or not session_id:
+        return None
+    text = message.strip()
+    # 全新写作请求不走修改模式
+    if any(t in text for t in NEW_WRITING_TRIGGERS):
+        return None
+    last_writing = _latest_writing_assistant(session_id, user_id=user_id)
+    if not last_writing:
+        return None
+    if not any(kw in text for kw in WRITING_REVISE_KEYWORDS):
+        return None
+    return last_writing
+
+
+def _new_message_id() -> str:
+    return uuid.uuid4().hex
 
 
 def _related_chips(search_results) -> list:
@@ -350,10 +415,21 @@ def _build_smalltalk_messages(user_message: str, session_history: list = None) -
     return messages
 
 
-def _build_messages(request: ChatRequest, session_id: str, intent: str, context: str, user_id=None):
+def _build_messages(request: ChatRequest, session_id: str, intent: str, context: str, user_id=None, writing_revise_content: str = ""):
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-    user_query = _build_writing_message(request) if intent == "writing" else request.message
-    if intent == "writing":
+    if intent == "writing_revise":
+        # 对话式公文修改：把已生成的公文全文作为上下文，要求只改用户要求的部分
+        user_query = request.message
+        original = (writing_revise_content or "").strip()
+        revise_prompt = WRITING_REVISE_PROMPT_EXTRA
+        if original:
+            revise_prompt += "\n\n【公文原文】\n" + original
+        messages.append({"role": "system", "content": revise_prompt})
+        style = _style_section("writing_reply")
+        if style:
+            messages.append({"role": "system", "content": "回复风格与格式要求：\n" + style})
+    elif intent == "writing":
+        user_query = _build_writing_message(request)
         style = _style_section("writing_reply")
         messages.append({"role": "system", "content": WRITING_PROMPT_EXTRA.format(style=style) if style else WRITING_PROMPT_EXTRA.replace("{style}", "")})
     elif intent == "service":
@@ -409,11 +485,14 @@ async def chat(request: ChatRequest, user: UserOut = Depends(current_user)):
             session_store.add_messages(session_id, [user_msg, assistant_msg], user_id=user_id)
             return ChatResponse(session_id=session_id, content=content, references=[], retrieval_time_ms=0, generation_time_ms=0)
 
+        # 对话式公文修改：上一轮为公文生成且本轮包含修改指令时，直接进入修改模式
+        writing_revise = _detect_writing_revise(request.message, session_id, user_id=user_id)
+
         is_follow_up = bool(getattr(request, 'follow_up', False)) or knowledge_service.is_follow_up_intent(request.message)
         context_query = _previous_user_query(request, session_id, user_id=user_id) if is_follow_up else request.message
 
         # 1. 意图识别（smalltalk不检索知识库，直接走LLM）
-        intent = 'follow_up' if is_follow_up else knowledge_service.classify_intent(request.message)
+        intent = 'writing_revise' if writing_revise else ('follow_up' if is_follow_up else knowledge_service.classify_intent(request.message))
 
         if intent == 'smalltalk':
             history = _history_messages(request, session_id, user_id=user_id)
@@ -429,6 +508,38 @@ async def chat(request: ChatRequest, user: UserOut = Depends(current_user)):
             references = []
             user_msg = {"role": "user", "content": request.message, "timestamp": int(time.time() * 1000)}
             assistant_msg = {"role": "assistant", "content": content, "references": [], "timestamp": int(time.time() * 1000)}
+            session_store.add_messages(session_id, [user_msg, assistant_msg], user_id=user_id)
+            return ChatResponse(
+                session_id=session_id, content=content, references=[],
+                retrieval_time_ms=0, generation_time_ms=generation_time,
+            )
+
+        # 1.5 公文修改：基于已生成公文原文调用 LLM，不做知识库检索
+        if writing_revise:
+            references = []
+            retrieval_time = 0.0
+            messages = _build_messages(
+                request, session_id, "writing_revise", context="",
+                user_id=user_id, writing_revise_content=writing_revise["content"],
+            )
+            generation_start = time.time()
+            try:
+                llm_response = await llm_service.chat(messages, stream=False)
+                content = _extract_content(llm_response)
+            except Exception as primary_error:
+                logger.warning(f"公文修改主通道失败，尝试兜底: {primary_error}")
+                try:
+                    llm_response = await llm_service.chat(
+                        messages, stream=False, provider=settings.LLM_FALLBACK_PROVIDER,
+                    )
+                    content = _extract_content(llm_response)
+                except Exception as fallback_error:
+                    logger.warning(f"公文修改兜底也失败: {fallback_error}")
+                    content = "抱歉，公文修改失败，请稍后重试。"
+            generation_time = (time.time() - generation_start) * 1000
+            search_results = []
+            user_msg = {"id": _new_message_id(), "role": "user", "content": request.message, "timestamp": int(time.time() * 1000)}
+            assistant_msg = {"id": _new_message_id(), "role": "assistant", "content": content, "references": [], "timestamp": int(time.time() * 1000), "status": "writing"}
             session_store.add_messages(session_id, [user_msg, assistant_msg], user_id=user_id)
             return ChatResponse(
                 session_id=session_id, content=content, references=[],
@@ -485,8 +596,10 @@ async def chat(request: ChatRequest, user: UserOut = Depends(current_user)):
             generation_time = (time.time() - generation_start) * 1000
 
         # 4. 持久化会话
-        user_msg = {"role": "user", "content": request.message, "timestamp": int(time.time() * 1000)}
-        assistant_msg = {"role": "assistant", "content": content, "references": references, "timestamp": int(time.time() * 1000)}
+        user_msg = {"id": _new_message_id(), "role": "user", "content": request.message, "timestamp": int(time.time() * 1000)}
+        assistant_msg = {"id": _new_message_id(), "role": "assistant", "content": content, "references": references, "timestamp": int(time.time() * 1000)}
+        if intent == "writing":
+            assistant_msg["status"] = "writing"
         session_store.add_messages(session_id, [user_msg, assistant_msg], user_id=user_id)
 
         logger.info(
@@ -514,12 +627,18 @@ async def chat_stream(request: ChatRequest, user: UserOut = Depends(current_user
     session_id = _resolve_session_id(request, user_id=user_id)
     dialogue_intent, dialogue_reply = _dialogue_reply(request.message)
     is_greeting = bool(dialogue_reply)
+    # 对话式公文修改：上一轮为公文生成且本轮含修改指令，直接进入修改模式（不检索）
+    writing_revise = _detect_writing_revise(request.message, session_id, user_id=user_id)
     is_follow_up = bool(getattr(request, 'follow_up', False)) or knowledge_service.is_follow_up_intent(request.message)
-    intent = 'follow_up' if is_follow_up else knowledge_service.classify_intent(request.message)
+    intent = 'writing_revise' if writing_revise else ('follow_up' if is_follow_up else knowledge_service.classify_intent(request.message))
     is_smalltalk = (intent == 'smalltalk')
     retrieval_start = time.time()
     alias_extra, alias_hit = '', None
-    if is_smalltalk:
+    if writing_revise:
+        # 公文修改不做知识库检索，直接基于已生成公文原文交给 LLM
+        context_query = request.message
+        search_results = []
+    elif is_smalltalk:
         context_query = request.message
         search_results = []
     elif is_follow_up:
@@ -539,8 +658,8 @@ async def chat_stream(request: ChatRequest, user: UserOut = Depends(current_user
         session_id, request.message, alias_extra, intent, alias_hit,
         search_results, retrieval_time,
     ))
-    # 公文写作是生成类任务，其检索仅用于取写作模板，不向用户展示引用来源
-    references = [] if intent == 'writing' else knowledge_service.get_references(search_results)
+    # 公文写作/修改是生成类任务，其检索仅用于取写作模板，不向用户展示引用来源
+    references = [] if intent in ('writing', 'writing_revise') else knowledge_service.get_references(search_results)
     context = _service_context_text(search_results) if (search_results and intent == 'service') else (knowledge_service.build_context_from_results(search_results) if search_results else "")
 
     # 元信息一次性下发
@@ -549,7 +668,7 @@ async def chat_stream(request: ChatRequest, user: UserOut = Depends(current_user
         "intent": "greeting" if is_greeting else ("follow_up" if is_follow_up else intent),
         "references": references,
         "hit_count": len(search_results),
-        "status": "smalltalk" if is_smalltalk else ("greeting" if is_greeting else ("refusal" if not search_results else ("writing" if intent == "writing" else "ok"))),
+        "status": "smalltalk" if is_smalltalk else ("greeting" if is_greeting else ("writing" if writing_revise else ("refusal" if not search_results else ("writing" if intent == "writing" else "ok")))),
     }
     follow_up_chips = _related_chips(search_results) if (search_results and references) else []
 
@@ -558,11 +677,11 @@ async def chat_stream(request: ChatRequest, user: UserOut = Depends(current_user
         yield f"data: {json.dumps({'type': 'meta', **meta}, ensure_ascii=False)}\n\n"
 
         if is_greeting:
-            user_msg = {"role": "user", "content": request.message, "timestamp": int(time.time() * 1000)}
-            assistant_msg = {"role": "assistant", "content": dialogue_reply, "references": [], "timestamp": int(time.time() * 1000)}
+            user_msg = {"id": _new_message_id(), "role": "user", "content": request.message, "timestamp": int(time.time() * 1000)}
+            assistant_msg = {"id": _new_message_id(), "role": "assistant", "content": dialogue_reply, "references": [], "timestamp": int(time.time() * 1000)}
             session_store.add_messages(session_id, [user_msg, assistant_msg], user_id=user_id)
             yield f"data: {json.dumps({'type': 'delta', 'content': dialogue_reply}, ensure_ascii=False)}\n\n"
-            yield f"data: {json.dumps({'type': 'done', 'session_id': session_id, 'references': [], 'status': 'greeting'}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'type': 'done', 'session_id': session_id, 'message_id': assistant_msg['id'], 'references': [], 'status': 'greeting'}, ensure_ascii=False)}\n\n"
             yield "data: [DONE]\n\n"
             return
 
@@ -594,10 +713,47 @@ async def chat_stream(request: ChatRequest, user: UserOut = Depends(current_user
                 accumulated_st.append(fallback_st)
                 yield f"data: {json.dumps({'type': 'delta', 'content': fallback_st}, ensure_ascii=False)}\n\n"
             full_st = "".join(accumulated_st)
-            user_msg = {"role": "user", "content": request.message, "timestamp": int(time.time() * 1000)}
-            assistant_msg = {"role": "assistant", "content": full_st, "references": [], "timestamp": int(time.time() * 1000)}
+            user_msg = {"id": _new_message_id(), "role": "user", "content": request.message, "timestamp": int(time.time() * 1000)}
+            assistant_msg = {"id": _new_message_id(), "role": "assistant", "content": full_st, "references": [], "timestamp": int(time.time() * 1000)}
             session_store.add_messages(session_id, [user_msg, assistant_msg], user_id=user_id)
-            yield f"data: {json.dumps({'type': 'done', 'session_id': session_id, 'references': [], 'follow_up_chips': [], 'status': 'smalltalk'}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'type': 'done', 'session_id': session_id, 'message_id': assistant_msg['id'], 'references': [], 'follow_up_chips': [], 'status': 'smalltalk'}, ensure_ascii=False)}\n\n"
+            yield "data: [DONE]\n\n"
+            return
+
+        # 公文修改模式：不依赖检索结果，直接基于已生成公文原文流式生成
+        if writing_revise:
+            messages = _build_messages(
+                request, session_id, "writing_revise", context="",
+                user_id=user_id, writing_revise_content=writing_revise["content"],
+            )
+            accumulated_rev: List[str] = []
+            rev_status = {"ok": False}
+            try:
+                async for delta in await llm_service.chat(messages, stream=True, provider=(request.provider or settings.LLM_PROVIDER)):
+                    if delta:
+                        accumulated_rev.append(delta)
+                        yield f"data: {json.dumps({'type': 'delta', 'content': delta}, ensure_ascii=False)}\n\n"
+                rev_status["ok"] = True
+            except Exception as e:
+                logger.warning(f"公文修改流式失败: {e}")
+            if not rev_status["ok"] or not accumulated_rev:
+                try:
+                    async for delta in await llm_service.chat(messages, stream=True, provider=settings.LLM_FALLBACK_PROVIDER):
+                        if delta:
+                            accumulated_rev.append(delta)
+                            yield f"data: {json.dumps({'type': 'delta', 'content': delta}, ensure_ascii=False)}\n\n"
+                except Exception as e2:
+                    logger.warning(f"公文修改兜底流式也失败: {e2}")
+            if not accumulated_rev:
+                fallback_rev = "抱歉，公文修改失败，请稍后重试。"
+                accumulated_rev.append(fallback_rev)
+                yield f"data: {json.dumps({'type': 'delta', 'content': fallback_rev}, ensure_ascii=False)}\n\n"
+            full_rev = "".join(accumulated_rev)
+            user_msg = {"id": _new_message_id(), "role": "user", "content": request.message, "timestamp": int(time.time() * 1000)}
+            assistant_msg = {"id": _new_message_id(), "role": "assistant", "content": full_rev, "references": [], "timestamp": int(time.time() * 1000), "status": "writing"}
+            assistant_message_id = assistant_msg["id"]
+            session_store.add_messages(session_id, [user_msg, assistant_msg], user_id=user_id)
+            yield f"data: {json.dumps({'type': 'done', 'session_id': session_id, 'message_id': assistant_message_id, 'references': [], 'follow_up_chips': [], 'status': 'writing'}, ensure_ascii=False)}\n\n"
             yield "data: [DONE]\n\n"
             return
 
@@ -606,8 +762,8 @@ async def chat_stream(request: ChatRequest, user: UserOut = Depends(current_user
             yield f"data: {json.dumps({'type': 'error', 'message': refuse_text}, ensure_ascii=False)}\n\n"
             yield f"data: {json.dumps({'type': 'done', 'session_id': session_id, 'references': [], 'status': 'refusal'}, ensure_ascii=False)}\n\n"
             yield "data: [DONE]\n\n"
-            user_msg = {"role": "user", "content": request.message, "timestamp": int(time.time() * 1000)}
-            assistant_msg = {"role": "assistant", "content": refuse_text, "references": [], "timestamp": int(time.time() * 1000)}
+            user_msg = {"id": _new_message_id(), "role": "user", "content": request.message, "timestamp": int(time.time() * 1000)}
+            assistant_msg = {"id": _new_message_id(), "role": "assistant", "content": refuse_text, "references": [], "timestamp": int(time.time() * 1000)}
             session_store.add_messages(session_id, [user_msg, assistant_msg], user_id=user_id)
             return
 
@@ -652,11 +808,14 @@ async def chat_stream(request: ChatRequest, user: UserOut = Depends(current_user
             yield f"data: {json.dumps({'type': 'delta', 'content': fallback_text}, ensure_ascii=False)}\n\n"
 
         full_text = "".join(accumulated)
-        user_msg = {"role": "user", "content": request.message, "timestamp": int(time.time() * 1000)}
-        assistant_msg = {"role": "assistant", "content": full_text, "references": references, "timestamp": int(time.time() * 1000)}
+        user_msg = {"id": _new_message_id(), "role": "user", "content": request.message, "timestamp": int(time.time() * 1000)}
+        assistant_msg = {"id": _new_message_id(), "role": "assistant", "content": full_text, "references": references, "timestamp": int(time.time() * 1000)}
+        if intent == "writing":
+            assistant_msg["status"] = "writing"
+        assistant_message_id = assistant_msg["id"]
         session_store.add_messages(session_id, [user_msg, assistant_msg], user_id=user_id)
 
-        yield f"data: {json.dumps({'type': 'done', 'session_id': session_id, 'references': references, 'follow_up_chips': follow_up_chips, 'status': 'writing' if intent == 'writing' else 'ok'}, ensure_ascii=False)}\n\n"
+        yield f"data: {json.dumps({'type': 'done', 'session_id': session_id, 'message_id': assistant_message_id, 'references': references, 'follow_up_chips': follow_up_chips, 'status': 'writing' if intent == 'writing' else 'ok'}, ensure_ascii=False)}\n\n"
         yield "data: [DONE]\n\n"
 
     return StreamingResponse(
@@ -711,3 +870,118 @@ def _fallback_response(query: str, results: list) -> str:
 
     parts.append("\n\n如需更详细的解答，请继续提问。")
     return "".join(parts)
+
+
+# ----------------------------------------------------------------------
+# T02: 公文 docx 导出 / T04: 满意度反馈
+# ----------------------------------------------------------------------
+
+class ExportDocxRequest(BaseModel):
+    session_id: Optional[str] = None
+    message_id: Optional[str] = None
+    content: Optional[str] = None
+    title: Optional[str] = None
+
+
+class FeedbackRequest(BaseModel):
+    session_id: str
+    message_id: Optional[str] = ""
+    rating: str
+    comment: Optional[str] = ""
+
+
+def _safe_docx_filename(title: str) -> str:
+    """从公文标题生成安全的下载文件名（去后缀、限长、URL 编码兼容中文）。"""
+    name = (title or "公文").strip()
+    # 去掉 Markdown 标记与首尾空白/符号
+    name = re.sub(r"[#*`>\-]", "", name).strip()
+    name = re.sub(r"\s+", "", name)
+    if not name:
+        name = "公文"
+    if len(name) > 60:
+        name = name[:60]
+    return name
+
+
+@router.post("/export-docx")
+async def export_docx(body: ExportDocxRequest, user: UserOut = Depends(current_user)):
+    """将公文内容导出为国标格式 docx。
+
+    支持两种取数方式：
+    1. 传 session_id + message_id：从会话存储读取对应 assistant 消息 content
+    2. 直接传 content（可选 title）：直接导出传入内容
+    """
+    content = ""
+    title_hint = (body.title or "").strip()
+
+    if body.content and body.content.strip():
+        content = body.content
+    elif body.session_id and body.message_id:
+        # 校验会话归属权
+        session = session_store.get(body.session_id, user_id=user.id)
+        if not session:
+            raise HTTPException(status_code=404, detail="会话不存在或无权访问")
+        msg = session_store.get_message(body.session_id, body.message_id, user_id=user.id)
+        if not msg:
+            raise HTTPException(status_code=404, detail="消息不存在")
+        content = msg.get("content", "") or ""
+        if not title_hint:
+            title_hint = (session.get("title") or "").strip()
+    else:
+        raise HTTPException(status_code=400, detail="参数错误：需提供 content 或 session_id+message_id")
+
+    if not content.strip():
+        raise HTTPException(status_code=400, detail="公文内容为空，无法导出")
+
+    try:
+        docx_bytes = build_writing_docx(content, title_hint=title_hint)
+    except Exception as e:
+        logger.error(f"公文 docx 导出失败: {e}")
+        raise HTTPException(status_code=500, detail="导出失败")
+
+    # 文件名：从正文首个 # 标题推断，回退 title_hint，再回退“公文”
+    filename_title = title_hint or "公文"
+    for line in content.splitlines():
+        s = line.strip()
+        if s.startswith("#"):
+            t = s.lstrip("#").strip()
+            if t:
+                filename_title = t
+                break
+    safe_name = _safe_docx_filename(filename_title)
+    # RFC 5987 编码：filename 用 ASCII 回退，filename* 承载 UTF-8 中文文件名
+    encoded = quote(safe_name)
+    ascii_fallback = "document"
+    headers = {
+        "Content-Disposition": f"attachment; filename=\"{ascii_fallback}.docx\"; filename*=UTF-8''{encoded}.docx"
+    }
+    return StreamingResponse(
+        iter([docx_bytes]),
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers=headers,
+    )
+
+
+# 满意度反馈挂在 /api 前缀下，对外路径为 /api/feedback
+feedback_router = APIRouter()
+
+
+@feedback_router.post("/feedback")
+async def submit_feedback(body: FeedbackRequest, user: UserOut = Depends(current_user)):
+    """满意度反馈：点赞/点踩，落库 feedback_logs。"""
+    rating = (body.rating or "").strip().lower()
+    if rating not in ("up", "down"):
+        raise HTTPException(status_code=400, detail="rating 必须为 up 或 down")
+    if not body.session_id:
+        raise HTTPException(status_code=400, detail="session_id 不能为空")
+
+    ok = pg_store.insert_feedback(
+        session_id=body.session_id,
+        message_id=body.message_id or "",
+        rating=rating,
+        payload={"comment": (body.comment or ""), "user_id": user.id},
+    )
+    if not ok:
+        # PG 未就绪或写入失败：记录日志但仍返回成功，避免阻断前端交互
+        logger.warning("反馈写入 PG 失败（可能 PG 未就绪，已降级）")
+    return {"ok": True}

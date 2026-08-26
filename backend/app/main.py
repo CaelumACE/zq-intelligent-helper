@@ -74,6 +74,7 @@ app.include_router(admin.router, prefix="/api", tags=["管理员用户管理"])
 app.include_router(guide.router, prefix="/api/guide", tags=["导办"])
 app.include_router(compare.router, prefix="/api", tags=["比对"])
 app.include_router(kb_admin.router, prefix="/api", tags=["知识库后台"])
+app.include_router(chat.feedback_router, prefix="/api", tags=["满意度反馈"])
 
 
 @app.get("/health")

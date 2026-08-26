@@ -19,7 +19,7 @@ from app.core.config import settings
 from app.core.logger import logger
 from sqlalchemy import create_engine, text
 
-_JSON_MESSAGE_FIELDS = ("role", "content", "references", "model", "timestamp")
+_JSON_MESSAGE_FIELDS = ("id", "role", "content", "references", "model", "timestamp", "status")
 
 
 class SessionStore:
@@ -315,6 +315,15 @@ class SessionStore:
         if not self._owned(session, user_id) or not session:
             return []
         return session.get("messages", [])[-limit:]
+
+    def get_message(self, session_id: str, message_id: str, user_id=None) -> dict | None:
+        """按 message_id 读取会话中的某条消息（跨 SQL/JSON 后端）。"""
+        if not message_id:
+            return None
+        for msg in self.get_history(session_id, limit=1000, user_id=user_id):
+            if isinstance(msg, dict) and msg.get("id") == message_id:
+                return msg
+        return None
 
     def delete(self, session_id: str, user_id=None) -> bool:
         if self._sql_ready:
