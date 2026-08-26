@@ -12,7 +12,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  VITE_API_BASE: https://3b6dbdc0.r26.cpolar.top/api
+  VITE_API_BASE: https://2c2aec80.r26.cpolar.top/api
 
 jobs:
   deploy:
