@@ -57,7 +57,13 @@ export default function Sidebar({
     <aside className="sidebar">
       <div className="side-head">
         <div className="side-logo">
-          <div className="logo-mark">政</div>
+          <div className="logo-mark" aria-hidden="true">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 21h18"/>
+              <path d="M5 21V7l7-4 7 4v14"/>
+              <path d="M9 21v-6h6v6"/>
+            </svg>
+          </div>
           <span>政企智能助手</span>
         </div>
       </div>

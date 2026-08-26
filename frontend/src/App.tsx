@@ -561,8 +561,18 @@ function App() {
           }}
         />
 
-        {userAdminOpen && (
-          <UserAdmin onClose={() => setUserAdminOpen(false)} currentUserId={user?.id ?? null} currentUserRole={user?.role} />
+        {userAdminOpen && user && (user.role === 'admin' || user.role === 'super_admin') && (
+          <UserAdmin onClose={() => setUserAdminOpen(false)} currentUserId={user.id} currentUserRole={user.role} />
+        )}
+        {userAdminOpen && user && user.role === 'user' && (
+          <div className="ua-overlay" onClick={() => setUserAdminOpen(false)}>
+            <div className="ua-panel" onClick={(e) => e.stopPropagation()} style={{maxWidth:380,textAlign:'center',padding:'32px 28px'}}>
+              <div style={{fontSize:40,marginBottom:12}}>🔒</div>
+              <h3 style={{margin:'0 0 8px',fontSize:16,color:'#1A2433'}}>无访问权限</h3>
+              <p style={{margin:'0 0 20px',fontSize:13,color:'#8A94A6',lineHeight:1.6}}>当前账号无用户管理权限，<br/>请联系管理员。</p>
+              <button className="ua-btn ua-btn-primary" onClick={() => setUserAdminOpen(false)} style={{width:'100%'}}>我知道了</button>
+            </div>
+          </div>
         )}
       </div>
     </div>
