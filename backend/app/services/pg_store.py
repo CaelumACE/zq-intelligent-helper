@@ -138,12 +138,12 @@ class PGStore:
                     text(
                         "SELECT 1 FROM feedback_logs "
                         "WHERE session_id = :session_id AND message_id = :message_id "
-                        "AND payload::text LIKE :user_pattern LIMIT 1"
+                        "AND payload::jsonb->>'user_id' = CAST(:user_id AS TEXT) LIMIT 1"
                     ),
                     {
                         "session_id": session_id,
                         "message_id": message_id,
-                        "user_pattern": f'%"user_id": "{user_id}"%',
+                        "user_id": str(user_id),
                     },
                 ).fetchone()
                 return row is not None
