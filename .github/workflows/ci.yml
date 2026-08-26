@@ -13,6 +13,9 @@ concurrency:
 jobs:
   backend-check:
     runs-on: ubuntu-latest
+    env:
+      SUPER_ADMIN_PASSWORD: ci-test-password
+      JWT_SECRET: ci-test-jwt-secret-0123456789abcdef
     defaults:
       run:
         working-directory: backend
