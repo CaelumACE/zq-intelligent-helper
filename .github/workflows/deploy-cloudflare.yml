@@ -12,7 +12,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  VITE_API_BASE: https://1acdc5dd.r26.cpolar.top/api
+  VITE_API_BASE: https://31cb4970.r18.vip.cpolar.cn/api
 
 jobs:
   deploy:
@@ -34,7 +34,7 @@ jobs:
       - name: Verify API base in build
         working-directory: frontend
         run: |
-          grep -r "cpolar.top" dist/assets/*.js | head -1 && echo "API base injected OK"
+          grep -r "cpolar.cn" dist/assets/*.js | head -1 && echo "API base injected OK"
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
         with:
