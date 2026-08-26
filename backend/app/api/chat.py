@@ -417,6 +417,7 @@ def _build_smalltalk_messages(user_message: str, session_history: list = None) -
 
 def _build_messages(request: ChatRequest, session_id: str, intent: str, context: str, user_id=None, writing_revise_content: str = ""):
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    user_query = request.message
     if intent == "writing_revise":
         # 对话式公文修改：把已生成的公文全文作为上下文，要求只改用户要求的部分
         user_query = request.message
