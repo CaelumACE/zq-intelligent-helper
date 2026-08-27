@@ -73,7 +73,6 @@ export default function UserAdmin({ onClose, currentUserId, currentUserRole }: {
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
 
-  // 切换页大小回到第一页
   useEffect(() => { setPage(1) }, [pageSize])
 
   const canModify = (u: AdminUser): boolean => {
@@ -230,7 +229,7 @@ export default function UserAdmin({ onClose, currentUserId, currentUserRole }: {
                     <td>{u.last_login ? new Date(u.last_login).toLocaleString('zh-CN') : '—'}</td>
                     <td className="ua-actions">
                       {isSuperRow ? (
-                        <span style={{ color: '#d97706', fontSize: 12 }}>🔒 超级管理员受保护</span>
+                        <span style={{ color: '#d97706', fontSize: 12 }}>🔒 超级管理员受保护（全局唯一）</span>
                       ) : u.role === 'admin' && !isSuper ? (
                         <span style={{ color: '#9ca3af', fontSize: 12 }}>🔒 管理员账号不可操作</span>
                       ) : (
@@ -292,7 +291,7 @@ export default function UserAdmin({ onClose, currentUserId, currentUserRole }: {
               <select className="ua-input" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
                 <option value="user">普通用户</option>
                 {isSuper && <option value="admin">管理员</option>}
-                {isSuper && <option value="super_admin">超级管理员</option>}
+                {/* 超级管理员全局唯一，不在新建选项中展示 */}
               </select>
               {formError && <div className="ua-error">{formError}</div>}
               <div className="ua-modal-actions">
