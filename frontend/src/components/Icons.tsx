@@ -213,6 +213,9 @@ const ICONS: Record<IconName, ReactNode> = {
       <polyline points="2 12 12 17 22 12" />
     </>
   ),
+  zap: (
+    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+  ),
 }
 
 export default function Icon({ name, size = 20, className }: IconProps) {

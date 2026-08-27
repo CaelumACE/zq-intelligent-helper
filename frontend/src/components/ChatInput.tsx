@@ -20,6 +20,7 @@ export default function ChatInput({ onSend, onStop, disabled = false, model, onM
   const [modelOpen, setModelOpen] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const prevDisabledRef = useRef(disabled)
+  const modelSelectRef = useRef<HTMLDivElement>(null)
 
   // 自适应高度
   useEffect(() => {
@@ -39,9 +40,13 @@ export default function ChatInput({ onSend, onStop, disabled = false, model, onM
   // 点击外部关闭模型下拉
   useEffect(() => {
     if (!modelOpen) return
-    const handler = () => setModelOpen(false)
-    window.addEventListener('click', handler)
-    return () => window.removeEventListener('click', handler)
+    const handler = (e: MouseEvent) => {
+      if (modelSelectRef.current && !modelSelectRef.current.contains(e.target as Node)) {
+        setModelOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
   }, [modelOpen])
 
   const handleSend = () => {
@@ -90,29 +95,38 @@ export default function ChatInput({ onSend, onStop, disabled = false, model, onM
           />
           <div className="input-toolbar">
             <div className="toolbar-left">
-              <div className="model-select" onClick={(e) => { e.stopPropagation(); setModelOpen(v => !v) }}>
-                <Icon name="search" size={13} />
-                <span>{MODEL_LABEL[model]}</span>
-                <Icon name="chevron-down" size={11} />
+              <div
+                className="model-select-wrap"
+                ref={modelSelectRef}
+              >
+                <button
+                  type="button"
+                  className="model-select"
+                  onClick={(e) => { e.stopPropagation(); setModelOpen(v => !v) }}
+                >
+                  <Icon name="zap" size={13} />
+                  <span>{MODEL_LABEL[model]}</span>
+                  <Icon name="chevron-down" size={11} />
+                </button>
+                {modelOpen && (
+                  <div className="model-select-menu">
+                    {Object.entries(MODEL_LABEL).map(([key, label]) => (
+                      <button
+                        key={key}
+                        type="button"
+                        className={`model-select-item ${model === key ? 'active' : ''}`}
+                        onClick={() => {
+                          onModelChange(key as ModelProvider)
+                          setModelOpen(false)
+                        }}
+                      >
+                        <span>{label}</span>
+                        {model === key && <Icon name="check" size={13} />}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
-              {modelOpen && (
-                <div className="model-select-menu">
-                  {Object.entries(MODEL_LABEL).map(([key, label]) => (
-                    <button
-                      key={key}
-                      type="button"
-                      className={`model-select-item ${model === key ? 'active' : ''}`}
-                      onClick={() => {
-                        onModelChange(key as ModelProvider)
-                        setModelOpen(false)
-                      }}
-                    >
-                      <span>{label}</span>
-                      {model === key && <Icon name="check" size={13} />}
-                    </button>
-                  ))}
-                </div>
-              )}
             </div>
             <button
               onClick={handlePrimary}

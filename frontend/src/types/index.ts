@@ -90,6 +90,7 @@ export type IconName =
   | 'edit'
   | 'calendar'
   | 'log-out'
+  | 'zap'
   | 'building'
   | 'layers';
 

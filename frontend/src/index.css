@@ -340,16 +340,20 @@ body {
   gap: 10px;
 }
 .side-foot-avatar {
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
   background: var(--gov-amber);
   color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
+  flex-shrink: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  line-height: 1;
 }
 .side-foot-name {
   flex: 1;
@@ -360,10 +364,12 @@ body {
   text-overflow: ellipsis;
 }
 .side-foot-badge {
-  font-size: 10px;
-  padding: 2px 6px;
+  font-size: 11px;
+  padding: 2px 7px;
   border-radius: 4px;
-  font-weight: 500;
+  font-weight: 600;
+  white-space: nowrap;
+  -webkit-font-smoothing: antialiased;
 }
 .side-foot-badge-super { background: var(--gov-amber); color: #fff; }
 .side-foot-badge-admin { background: rgba(255,255,255,0.2); color: #fff; }
@@ -1095,6 +1101,10 @@ body {
   align-items: center;
   gap: 8px;
 }
+.model-select-wrap {
+  position: relative;
+  display: inline-flex;
+}
 .model-select {
   display: inline-flex;
   align-items: center;
@@ -1107,7 +1117,6 @@ body {
   cursor: pointer;
   background: #fff;
   font-family: inherit;
-  position: relative;
   transition: all 0.15s;
 }
 .model-select:hover { border-color: #cbd5e1; }
@@ -1124,11 +1133,19 @@ body {
   z-index: 50;
 }
 .model-select-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
   padding: 8px 14px;
   font-size: 13px;
   cursor: pointer;
   color: var(--text-primary);
   white-space: nowrap;
+  background: none;
+  border: none;
+  font-family: inherit;
 }
 .model-select-item:hover { background: var(--gov-blue-light); color: var(--gov-blue); }
 .model-select-item.active { background: var(--gov-blue-light); color: var(--gov-blue); font-weight: 500; }
