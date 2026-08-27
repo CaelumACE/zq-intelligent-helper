@@ -8,7 +8,7 @@ set -e
 
 PROJECT_DIR="${GOV_PROJECT_DIR:-$HOME/gov-assistant}"
 REPO_URL="https://github.com/CaelumACE/zq-intelligent-helper.git"
-GIT_BRANCH="${1:-dev}"
+GIT_BRANCH="${1:-main}"
 
 echo "============================================"
 echo "  政企智能助手 - 虚拟机部署"
@@ -24,7 +24,7 @@ docker info > /dev/null 2>&1 && echo "Docker daemon: 运行中" || { echo "❌ D
 # 2. 检查端口冲突
 echo ""
 echo "[2/6] 检查端口占用..."
-for port in 80 8000; do
+for port in 80; do
     if ss -tlnp 2>/dev/null | grep -q ":${port} "; then
         echo "⚠️  端口 ${port} 已被占用："
         ss -tlnp | grep ":${port} "
@@ -83,6 +83,18 @@ EMBEDDING_PROVIDER=minimax
 EMBEDDING_MODEL=embo-01
 EMBEDDING_DIMENSION=1536
 
+# ===== Rerank（Demo 期可用 SiliconFlow；默认 offline） =====
+RERANK_PROVIDER=offline
+RERANK_MODEL=n-gram-offline
+RERANK_BASE_URL=
+RERANK_API_KEY=
+
+# ===== 安全密钥 =====
+JWT_SECRET=
+ADMIN_PASSWORD=
+SUPER_ADMIN_USERNAME=super_admin
+SUPER_ADMIN_PASSWORD=
+
 # ===== 数据库配置 =====
 POSTGRES_PASSWORD=$PG_PASS
 DATABASE_URL=postgresql+psycopg2://gov:$PG_PASS@postgres:5432/gov_assistant
@@ -101,7 +113,7 @@ echo ""
 echo "[6/6] 等待服务启动..."
 sleep 10
 for i in $(seq 1 30); do
-    HEALTH=$(curl -s http://localhost:8000/health 2>/dev/null || echo "")
+    HEALTH=$(curl -s http://localhost/health 2>/dev/null || echo "")
     if echo "$HEALTH" | grep -q "ok"; then
         echo ""
         echo "============================================"
@@ -111,12 +123,12 @@ for i in $(seq 1 30); do
         echo ""
         VM_IP=$(hostname -I | awk '{print $1}')
         echo "访问地址："
-        echo "  前端: http://${VM_IP}"
-        echo "  API:  http://${VM_IP}:8000"
-        echo "  RAG:  http://${VM_IP}:8000/api/knowledge/rag/status"
+        echo "  前端/API同源: http://${VM_IP}"
+        echo "  健康检查: http://${VM_IP}/health"
+        echo "  （M2 修复后 8000 端口不再对外，仅 nginx 80 反代访问）"
         echo ""
-        RAG=$(curl -s http://localhost:8000/api/knowledge/rag/status 2>/dev/null)
-        echo "RAG状态: $RAG"
+        RAG=$(curl -s http://localhost/health 2>/dev/null)
+        echo "服务状态: $RAG"
         echo ""
         echo "日志: docker compose logs -f"
         echo "停止: docker compose down"
