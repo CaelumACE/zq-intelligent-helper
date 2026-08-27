@@ -40,6 +40,10 @@ services:
       - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-minimax}
       - EMBEDDING_MODEL=${EMBEDDING_MODEL:-embo-01}
       - EMBEDDING_DIMENSION=${EMBEDDING_DIMENSION:-1536}
+      - RERANK_PROVIDER=${RERANK_PROVIDER:-offline}
+      - RERANK_MODEL=${RERANK_MODEL:-n-gram-offline}
+      - RERANK_BASE_URL=${RERANK_BASE_URL:-}
+      - RERANK_API_KEY=${RERANK_API_KEY:-}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost,http://127.0.0.1}
       - DATA_DIR=/app/data
     volumes:

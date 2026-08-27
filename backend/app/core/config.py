@@ -67,9 +67,10 @@ class Settings:
     EMBEDDING_MODEL = os.getenv('EMBEDDING_MODEL', 'embo-01')
     EMBEDDING_DIMENSION = int(os.getenv('EMBEDDING_DIMENSION', '1536'))
     
-    # Rerank
+    # Rerank：默认 offline 为内置 n-gram 重排，不依赖外部 API。
+    # Demo 期可配置在线 Rerank（如 SiliconFlow）；私有化交付时将 RERANK_BASE_URL 指向内网即可，无需改代码。
     RERANK_PROVIDER = os.getenv('RERANK_PROVIDER', 'offline')
-    RERANK_MODEL = os.getenv('RERANK_MODEL', 'bge-reranker-base')
+    RERANK_MODEL = os.getenv('RERANK_MODEL', 'n-gram-offline')
     RERANK_BASE_URL = os.getenv('RERANK_BASE_URL', '')
     RERANK_API_KEY = os.getenv('RERANK_API_KEY', '')
 
