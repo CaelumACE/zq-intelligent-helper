@@ -370,6 +370,19 @@ def get_user(user_id: int) -> Optional[dict]:
         return _user_dict(user) if user else None
 
 
+def count_super_admins() -> int:
+    """统计库中超级管理员账号数量，用于超管唯一性校验。"""
+    try:
+        _ensure_engine()
+        Base.metadata.create_all(_engine)
+        ensure_user_columns()
+        with get_session_factory() as session:
+            return int(session.scalar(select(func.count()).select_from(User).where(User.role == "super_admin")) or 0)
+    except Exception as exc:
+        logger.warning(f"统计超级管理员失败: {exc}")
+        return -1
+
+
 def _user_dict(u: User) -> dict:
     return {
         "id": u.id,

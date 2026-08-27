@@ -31,6 +31,7 @@ class KnowledgeItem(Base):
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     category: Mapped[str] = mapped_column(String(50), default="policy", nullable=False)
     source: Mapped[str] = mapped_column(String(200), default="")
+    doc_type: Mapped[str] = mapped_column(String(50), default="policy", nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="active", nullable=False)
     meta: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
@@ -63,12 +64,29 @@ def init_kb_db() -> bool:
     try:
         factory = _ensure()
         Base.metadata.create_all(_engine)
+        ensure_kb_columns()
         _ready = True
         return True
     except Exception as exc:
         logger.warning(f"knowledge_items 初始化失败: {exc}")
         _ready = False
         return False
+
+
+def ensure_kb_columns() -> None:
+    """为旧库补齐 doc_type 列，兼容 SQLite/PG 已存在列的场景。"""
+    try:
+        from sqlalchemy import inspect, text as sql_text
+        _ensure()
+        inspector = inspect(_engine)
+        columns = {c["name"] for c in inspector.get_columns(KnowledgeItem.__tablename__)}
+        if "doc_type" in columns:
+            return
+        with _engine.begin() as conn:
+            conn.execute(sql_text(f"ALTER TABLE {KnowledgeItem.__tablename__} ADD COLUMN doc_type TEXT NOT NULL DEFAULT 'policy'"))
+        logger.info("knowledge_items 字段迁移完成: doc_type")
+    except Exception as exc:
+        logger.warning(f"knowledge_items 字段迁移失败，将由 ORM 新建表兜底: {exc}")
 
 
 def db_ready() -> bool:
@@ -80,6 +98,7 @@ def _dict(k: KnowledgeItem) -> dict:
         "id": k.id,
         "title": k.title,
         "category": k.category,
+        "doc_type": k.doc_type or "policy",
         "source": k.source or "",
         "status": k.status,
         "metadata": k.meta or {},
@@ -88,12 +107,14 @@ def _dict(k: KnowledgeItem) -> dict:
     }
 
 
-def list_items(category: str | None = None, status: str | None = None, search: str | None = None) -> List[dict]:
+def list_items(category: str | None = None, status: str | None = None, search: str | None = None, doc_type: str | None = None) -> List[dict]:
     factory = _ensure()
     with factory() as session:
         stmt = select(KnowledgeItem).order_by(KnowledgeItem.id.desc())
         if category:
             stmt = stmt.where(KnowledgeItem.category == category)
+        if doc_type:
+            stmt = stmt.where(KnowledgeItem.doc_type == doc_type)
         if status:
             stmt = stmt.where(KnowledgeItem.status == status)
         if search and search.strip():
@@ -110,7 +131,7 @@ def get_item(item_id: int) -> Optional[dict]:
         return _dict(row) if row else None
 
 
-def create_item(title: str, content: str, category: str = "policy", source: str = "", metadata: dict | None = None) -> dict:
+def create_item(title: str, content: str, category: str = "policy", source: str = "", metadata: dict | None = None, doc_type: str = "policy") -> dict:
     factory = _ensure()
     with factory() as session:
         row = session.execute(select(KnowledgeItem).where(KnowledgeItem.title == title)).scalar_one_or_none()
@@ -120,6 +141,7 @@ def create_item(title: str, content: str, category: str = "policy", source: str 
             title=title,
             content=content,
             category=category,
+            doc_type=doc_type or "policy",
             source=source,
             status="active",
             meta=metadata or {},
@@ -130,7 +152,7 @@ def create_item(title: str, content: str, category: str = "policy", source: str 
         return _dict(item)
 
 
-def update_item(item_id: int, title: str | None, content: str | None, category: str | None = None, source: str | None = None, metadata: dict | None = None) -> Optional[dict]:
+def update_item(item_id: int, title: str | None, content: str | None, category: str | None = None, source: str | None = None, metadata: dict | None = None, doc_type: str | None = None) -> Optional[dict]:
     factory = _ensure()
     with factory() as session:
         item = session.get(KnowledgeItem, item_id)
@@ -144,6 +166,8 @@ def update_item(item_id: int, title: str | None, content: str | None, category: 
             item.category = category
         if source is not None:
             item.source = source
+        if doc_type is not None:
+            item.doc_type = doc_type
         if metadata is not None:
             item.meta = metadata
         session.commit()

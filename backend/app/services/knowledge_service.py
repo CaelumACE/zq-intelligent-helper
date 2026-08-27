@@ -383,8 +383,11 @@ class KnowledgeService:
         ]
         return ' '.join(str(p) for p in parts if p)
 
-    def search(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
-        """检索知识库（当前为增强关键词检索，后续升级向量语义检索）"""
+    def search(self, query: str, top_k: int = 5, apply_rerank: bool = True) -> List[Dict[str, Any]]:
+        """检索知识库（当前为增强关键词检索，后续升级向量语义检索）。
+
+        apply_rerank=False 时返回原始打分候选，供检索测试面板对比重排前后排名。
+        """
         results = []
         query_lower = query.lower()
         if self._is_greeting(query_lower):
@@ -443,6 +446,8 @@ class KnowledgeService:
         results = [r for r in results if r['score'] >= min_score]
         if not results:
             return []
+        if not apply_rerank:
+            return results[:top_k]
         return rerank_service.rerank_sync(query, results)[:top_k]
 
     def _is_greeting(self, query_lower: str) -> bool:

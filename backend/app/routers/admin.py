@@ -6,6 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from app.routers.auth import current_user, UserOut
 from app.services.auth_service import hash_password
 from app.services.guide_store import (
+    count_super_admins,
     create_user,
     delete_user,
     get_user,
@@ -89,6 +90,12 @@ async def create_admin_user(body: AdminUserCreate, user: UserOut = Depends(admin
         raise HTTPException(status_code=403, detail="仅超级管理员可创建管理员账号")
     if get_user_by_username(body.username):
         raise HTTPException(status_code=409, detail="用户名已存在")
+    if body.role == "super_admin":
+        super_count = count_super_admins()
+        if super_count < 0:
+            raise HTTPException(status_code=500, detail="超级管理员数量校验失败，请稍后重试")
+        if super_count > 0:
+            raise HTTPException(status_code=409, detail="已存在超级管理员账号，系统仅允许一个超级管理员")
     try:
         item = create_user(body.username, hash_password(body.password), body.role, True)
     except IntegrityError as exc:
@@ -105,6 +112,12 @@ async def update_admin_user(user_id: int, body: AdminUserUpdate, user: UserOut =
     # 只有超级管理员可以授予/撤销超级管理员角色
     if body.role == "super_admin" and user.role != "super_admin":
         raise HTTPException(status_code=403, detail="仅超级管理员可授予超级管理员角色")
+    if body.role == "super_admin" and (target.get("role") or "") != "super_admin":
+        super_count = count_super_admins()
+        if super_count < 0:
+            raise HTTPException(status_code=500, detail="超级管理员数量校验失败，请稍后重试")
+        if super_count > 0:
+            raise HTTPException(status_code=409, detail="已存在超级管理员账号，系统仅允许一个超级管理员")
     if body.role == "admin" and user.role != "super_admin":
         raise HTTPException(status_code=403, detail="仅超级管理员可授予管理员角色")
     if user.id == user_id:
