@@ -1,3 +1,14 @@
+export interface StructuredAnswer {
+  item_name: string;
+  description?: string;
+  required_materials?: string[];
+  steps?: string[];
+  location?: string;
+  time_limit?: string;
+  fee?: string;
+  consult_phone?: string;
+}
+
 export interface Message {
   id: string;
   role: 'user' | 'assistant' | 'system';
@@ -7,7 +18,8 @@ export interface Message {
   references?: Reference[];
   followUpChips?: string[];
   model?: string;
-  status?: 'ok' | 'greeting' | 'self_intro' | 'capability' | 'thanks' | 'acknowledge' | 'farewell' | 'chat' | 'refusal' | 'out_of_scope' | 'writing';
+  structuredAnswer?: StructuredAnswer;
+  status?: 'ok' | 'greeting' | 'self_intro' | 'capability' | 'thanks' | 'acknowledge' | 'farewell' | 'chat' | 'refusal' | 'out_of_scope' | 'writing' | 'service_card';
 }
 
 export interface Reference {

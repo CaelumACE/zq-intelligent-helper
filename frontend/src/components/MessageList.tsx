@@ -4,6 +4,7 @@ import { copyText } from '../utils/clipboard'
 import { pickFollowUpChips, isRefusalReply } from '../utils/followUpChips'
 import { apiFetch, API_BASE } from '../utils/api'
 import MarkdownContent from './MarkdownContent'
+import ServiceCard from './ServiceCard'
 import Icon from './Icons'
 
 const COLLAPSE_THRESHOLD = 300
@@ -134,13 +135,16 @@ function MessageItem({
     <div className={`msg ${isUser ? 'user' : 'ai'}`}>
       <div className={isUser ? 'user-avatar' : `ai-avatar${streaming && !isUser ? ' streaming' : ''}`}>{isUser ? '我' : '政'}</div>
       <div className="msg-body">
-        <div className={`bubble-ai${isWriting ? ' writing-doc' : ''}`}>
+        <div className={`bubble-ai${isWriting ? ' writing-doc' : ''}${message.structuredAnswer ? ' has-svc-card' : ''}`}>
           <MarkdownContent content={shownContent} />
           {isLong && !expanded && (
             <button className="collapse-toggle" onClick={() => setExpanded(true)}>展开全文</button>
           )}
           {isLong && expanded && (
             <button className="collapse-toggle" onClick={() => setExpanded(false)}>收起</button>
+          )}
+          {message.structuredAnswer && (
+            <ServiceCard data={message.structuredAnswer} />
           )}
         </div>
         {!streaming && !refusal && (

@@ -11,7 +11,7 @@ import UserAdmin from './components/UserAdmin'
 import ChangePasswordModal from './components/ChangePasswordModal'
 import ComparePanel from './components/ComparePanel'
 import { apiFetch, setUnauthorizedHandler } from './utils/api'
-import type { AuthUser, Message, Conversation, Reference, ModelProvider, WritingRequest } from './types'
+import type { AuthUser, Message, Conversation, Reference, ModelProvider, WritingRequest, StructuredAnswer } from './types'
 import './App.css'
 
 const API_BASE = __API_BASE__
@@ -132,6 +132,7 @@ function App() {
     chunk: string,
     refs?: Reference[],
     replace?: boolean,
+    structuredAnswer?: StructuredAnswer,
   ) => {
     if (activeAssistantIdRef.current !== id) return
     setMessages(prev => {
@@ -143,6 +144,7 @@ function App() {
                 ...m,
                 content: replace ? chunk : m.content + chunk,
                 references: refs !== undefined ? refs : m.references,
+                structuredAnswer: structuredAnswer !== undefined ? structuredAnswer : m.structuredAnswer,
               }
             : m,
         )
@@ -155,6 +157,7 @@ function App() {
           content: chunk,
           timestamp: Date.now(),
           references: refs,
+          structuredAnswer,
         },
       ]
     })
@@ -187,6 +190,7 @@ function App() {
     let sessionId = currentSessionId
     let references: Reference[] | undefined
     let followUpChips: string[] | undefined
+    let structuredAnswer: StructuredAnswer | undefined
     let started = false
     let controller: AbortController | null = null
     let idleTimer: ReturnType<typeof setTimeout> | null = null
@@ -262,7 +266,7 @@ function App() {
               break
             }
 
-            let evt: { type?: string; content?: string; message?: string; references?: Reference[]; follow_up_chips?: string[]; session_id?: string; status?: Message['status'] }
+            let evt: { type?: string; content?: string; message?: string; references?: Reference[]; follow_up_chips?: string[]; session_id?: string; status?: Message['status']; structured_answer?: StructuredAnswer }
             try {
               evt = JSON.parse(payload)
             } catch {
@@ -277,6 +281,9 @@ function App() {
               if (evt.references) references = evt.references
               if (evt.follow_up_chips) followUpChips = evt.follow_up_chips
               if (evt.status) statusRef.current = evt.status
+              if (evt.structured_answer) structuredAnswer = evt.structured_answer
+            } else if (evt.type === 'structured_answer' && evt.structured_answer) {
+              structuredAnswer = evt.structured_answer
             } else if (evt.type === 'done') {
               if (evt.status) statusRef.current = evt.status
               if (evt.follow_up_chips) followUpChips = evt.follow_up_chips
@@ -286,7 +293,7 @@ function App() {
               if (!started) {
                 started = true
                 setIsLoading(false)
-                appendAssistant(assistantId, evt.content, references)
+                appendAssistant(assistantId, evt.content, references, false, structuredAnswer)
               } else {
                 appendAssistant(assistantId, evt.content)
               }
@@ -309,7 +316,7 @@ function App() {
       if (started) {
         setMessages(prev => prev.map(m => {
           if (m.id === assistantId) {
-            return { ...m, references: references ?? m.references, followUpChips: followUpChips ?? m.followUpChips, model, status: statusRef.current }
+            return { ...m, references: references ?? m.references, followUpChips: followUpChips ?? m.followUpChips, structuredAnswer: structuredAnswer ?? m.structuredAnswer, model, status: statusRef.current }
           }
           return m
         }))
