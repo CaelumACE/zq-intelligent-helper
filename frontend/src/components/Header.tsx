@@ -1,38 +1,64 @@
 import Icon from './Icons'
+import type { AuthUser, ModelProvider } from '../types'
 
 interface HeaderProps {
-  title: string;
-  onMenu?: () => void;
-  onWriting?: () => void;
+  activePanel: 'qa' | 'guide' | 'compare'
+  onPanelChange: (panel: 'qa' | 'guide' | 'compare') => void
+  onWriting: () => void
+  onMenu?: () => void
+  user: AuthUser | null
+  onLogout: () => void
+  model: ModelProvider
 }
 
-export default function Header({ title, onMenu, onWriting }: HeaderProps) {
+const TABS = [
+  { key: 'qa' as const, label: '智能问答', icon: 'help-circle' as const },
+  { key: 'guide' as const, label: '我要办事', icon: 'file-text' as const },
+  { key: 'compare' as const, label: '政策比对', icon: 'git-compare' as const },
+]
+
+export default function Header({ activePanel, onPanelChange, onWriting, onMenu, user, onLogout, model }: HeaderProps) {
   return (
-    <header
-      className="topbar"
-    >
-      {onMenu && (
-        <button
-          onClick={onMenu}
-          className="md:hidden text-[var(--text-2)] hover:text-[var(--primary)] p-1.5 rounded-lg hover:bg-gray-100"
-          aria-label="打开菜单"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-          </svg>
+    <header className="topbar">
+      <div className="topbar-left">
+        {onMenu && (
+          <button onClick={onMenu} className="topbar-menu-btn md:hidden" aria-label="打开菜单">
+            <Icon name="menu" size={20} />
+          </button>
+        )}
+        <nav className="nav-tabs">
+          {TABS.map((tab) => (
+            <button
+              key={tab.key}
+              className={`nav-tab ${activePanel === tab.key ? 'active' : ''}`}
+              onClick={() => onPanelChange(tab.key)}
+            >
+              <Icon name={tab.icon} size={16} />
+              <span>{tab.label}</span>
+            </button>
+          ))}
+        </nav>
+      </div>
+
+      <div className="topbar-right">
+        <span className="topbar-model">
+          <span className="topbar-model-dot" />
+          {model === 'minimax' ? 'MiniMax' : 'DeepSeek'}
+        </span>
+        <button className="write-btn" onClick={onWriting}>
+          <Icon name="pen-line" size={16} />
+          <span>写公文</span>
         </button>
-      )}
-      <h2 className="topbar-title">{title}</h2>
-      <div className="topbar-actions">
-        <button className="icon-btn" title="搜索" aria-label="搜索"><Icon name="search" size={18} /></button>
-        <button className="icon-btn icon-btn-badge" title="通知" aria-label="通知">
-          <Icon name="bell" size={18} />
-          <span className="icon-badge">3</span>
-        </button>
-        <button className="icon-btn" title="收藏夹" aria-label="收藏夹"><Icon name="star" size={18} /></button>
-        <button className="avatar-btn" title="个人中心" aria-label="个人中心"><Icon name="user" size={18} /></button>
-        {onWriting && (
-          <button className="icon-btn" title="公文写作" aria-label="公文写作" onClick={onWriting}><Icon name="pen" size={18} /></button>
+        {user && (
+          <div className="topbar-user">
+            <div className="topbar-user-avatar">{user.username.charAt(0).toUpperCase()}</div>
+            <div className="topbar-user-info">
+              <span className="topbar-user-name">{user.username}</span>
+            </div>
+            <button className="topbar-logout" onClick={onLogout} title="退出登录">
+              <Icon name="log-out" size={15} />
+            </button>
+          </div>
         )}
       </div>
     </header>

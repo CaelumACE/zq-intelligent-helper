@@ -48,6 +48,7 @@ export interface QuickActionItem {
   id: string;
   icon: IconName;
   label: string;
+  description: string;
   tag: string;
   prompt: string;
 }
@@ -57,12 +58,14 @@ export type ModelProvider = 'minimax' | 'deepseek';
 export type IconName =
   | 'book'
   | 'pen'
+  | 'pen-line'
   | 'compass'
   | 'home'
   | 'bell'
   | 'star'
   | 'search'
   | 'user'
+  | 'user-cog'
   | 'menu'
   | 'chevron-down'
   | 'copy'
@@ -73,7 +76,22 @@ export type IconName =
   | 'send'
   | 'plus'
   | 'download'
-  | 'x';
+  | 'x'
+  | 'file-text'
+  | 'check'
+  | 'map-pin'
+  | 'clock'
+  | 'dollar'
+  | 'phone'
+  | 'help-circle'
+  | 'git-compare'
+  | 'lock'
+  | 'settings'
+  | 'edit'
+  | 'calendar'
+  | 'log-out'
+  | 'building'
+  | 'layers';
 
 export interface GuideMaterial {
   name: string;

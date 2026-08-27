@@ -26,7 +26,6 @@ function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [model, setModel] = useState<ModelProvider>('minimax')
 
-  // 方案A：启动时从后端/health读取实际LLM provider，动态设置默认模型
   useEffect(() => {
     fetch(`${API_BASE}/health`)
       .then(r => r.ok ? r.json() : null)
@@ -37,6 +36,7 @@ function App() {
       })
       .catch(() => {})
   }, [])
+
   const [writingOpen, setWritingOpen] = useState(false)
   const [activePanel, setActivePanel] = useState<'qa' | 'guide' | 'compare'>('qa')
   const [loginOpen, setLoginOpen] = useState(false)
@@ -56,7 +56,7 @@ function App() {
   const sendingRef = useRef(false)
   const sessionSelectRef = useRef<string | null>(null)
 
-  // 单点登录检测：每60秒检查当前token是否仍有效，被其他端踢线则自动登出
+  // SSO check
   useEffect(() => {
     if (!token) return
     const check = async () => {
@@ -70,10 +70,9 @@ function App() {
           setToken(null)
           setUser(null)
         }
-      } catch { /* network error, ignore */ }
+      } catch { /* ignore */ }
     }
     const timer = setInterval(check, 60000)
-    // 页面可见时也检查一次（从其他标签切回来时）
     const onVisible = () => { if (document.visibilityState === 'visible') check() }
     document.addEventListener('visibilitychange', onVisible)
     return () => { clearInterval(timer); document.removeEventListener('visibilitychange', onVisible) }
@@ -235,8 +234,6 @@ function App() {
       let buffer = ''
       let doneReceived = false
 
-      // 60 秒无数据超时保护：代理层/连接挂起时主动 abort，
-      // 避免 reader.read() 一直等待导致 isLoading/isStreaming 无法复位。
       const resetIdleTimer = () => {
         if (idleTimer) clearTimeout(idleTimer)
         idleTimer = setTimeout(() => {
@@ -245,70 +242,69 @@ function App() {
       }
       resetIdleTimer()
 
-      while (!doneReceived) {
+      while (true) {
         const { done, value } = await reader.read()
-        resetIdleTimer()
         if (done) break
+        resetIdleTimer()
         buffer += decoder.decode(value, { stream: true })
 
-        let boundary = buffer.indexOf('\n\n')
-        while (boundary !== -1) {
-          const block = buffer.slice(0, boundary)
+        let boundary: number
+        while ((boundary = buffer.indexOf('\n\n')) >= 0) {
+          const rawEvent = buffer.slice(0, boundary)
           buffer = buffer.slice(boundary + 2)
 
-          for (const line of block.split('\n')) {
-            if (!line.startsWith('data:')) continue
-            const payload = line.slice(5).trim()
-            if (!payload) continue
-            // 收到 [DONE] 立即退出，不依赖 TCP 连接正常关闭，避免流挂起
-            if (payload === '[DONE]') {
-              doneReceived = true
-              break
-            }
-
-            let evt: { type?: string; content?: string; message?: string; references?: Reference[]; follow_up_chips?: string[]; session_id?: string; status?: Message['status']; structured_answer?: StructuredAnswer }
-            try {
-              evt = JSON.parse(payload)
-            } catch {
-              continue
-            }
-
-            if (evt.type === 'meta') {
-              if (evt.session_id) {
-                sessionId = evt.session_id
-                setCurrentSessionId(evt.session_id)
-              }
-              if (evt.references) references = evt.references
-              if (evt.follow_up_chips) followUpChips = evt.follow_up_chips
-              if (evt.status) statusRef.current = evt.status
-              if (evt.structured_answer) structuredAnswer = evt.structured_answer
-            } else if (evt.type === 'structured_answer' && evt.structured_answer) {
-              structuredAnswer = evt.structured_answer
-            } else if (evt.type === 'done') {
-              if (evt.status) statusRef.current = evt.status
-              if (evt.follow_up_chips) followUpChips = evt.follow_up_chips
-              // Reload conversation list to show the new session in sidebar
-              loadConversations()
-            } else if (evt.type === 'delta' && evt.content) {
-              if (!started) {
-                started = true
-                setIsLoading(false)
-                appendAssistant(assistantId, evt.content, references, false, structuredAnswer)
-              } else {
-                appendAssistant(assistantId, evt.content)
-              }
-            } else if (evt.type === 'error' && evt.message) {
-              if (!started) {
-                started = true
-                setIsLoading(false)
-              }
-              appendAssistant(assistantId, evt.message, undefined, true)
+          const lines = rawEvent.split('\n')
+          let evt: { type?: string; content?: string; session_id?: string; references?: Reference[]; follow_up_chips?: string[]; status?: Message['status']; structured_answer?: StructuredAnswer; message?: string; message_id?: string }
+          let payload = ''
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              payload += line.slice(6)
             }
           }
+          if (!payload || payload === '[DONE]') {
+            doneReceived = true
+            break
+          }
+          try {
+            evt = JSON.parse(payload)
+          } catch {
+            continue
+          }
 
-          if (doneReceived) break
-          boundary = buffer.indexOf('\n\n')
+          if (evt.type === 'meta') {
+            if (evt.session_id) {
+              sessionId = evt.session_id
+              setCurrentSessionId(evt.session_id)
+            }
+            if (evt.references) references = evt.references
+            if (evt.follow_up_chips) followUpChips = evt.follow_up_chips
+            if (evt.status) statusRef.current = evt.status
+            if (evt.structured_answer) structuredAnswer = evt.structured_answer
+          } else if (evt.type === 'structured_answer' && evt.structured_answer) {
+            structuredAnswer = evt.structured_answer
+          } else if (evt.type === 'done') {
+            if (evt.status) statusRef.current = evt.status
+            if (evt.follow_up_chips) followUpChips = evt.follow_up_chips
+            if (evt.references) references = evt.references
+            loadConversations()
+          } else if (evt.type === 'delta' && evt.content) {
+            if (!started) {
+              started = true
+              setIsLoading(false)
+              appendAssistant(assistantId, evt.content, references, false, structuredAnswer)
+            } else {
+              appendAssistant(assistantId, evt.content)
+            }
+          } else if (evt.type === 'error' && evt.message) {
+            if (!started) {
+              started = true
+              setIsLoading(false)
+            }
+            appendAssistant(assistantId, evt.message, undefined, true)
+          }
         }
+
+        if (doneReceived) break
       }
 
       if (idleTimer) clearTimeout(idleTimer)
@@ -364,7 +360,6 @@ function App() {
     abortActiveRequest()
     setIsLoading(false)
     setIsStreaming(false)
-    // 通知后端使当前 token 失效
     try {
       await apiFetch(`${API_BASE}/auth/logout`, { method: 'POST' })
     } catch { /* ignore */ }
@@ -424,11 +419,10 @@ function App() {
   const handleDeleteConversation = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation()
     e.preventDefault()
-    if (deletingId) return // 防竞态：有删除进行中时拒绝新请求
+    if (deletingId) return
     setDeletingId(id)
     sessionCacheRef.current.delete(id)
 
-    // 先在本地点掉侧栏条目，再发请求，避免等 DELETE 响应 + 列表重载造成的延迟
     const prevConversations = conversations
     setConversations(prev => prev.filter(c => c.id !== id))
     if (id === currentSessionId) {
@@ -440,14 +434,13 @@ function App() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
     } catch (err) {
       console.error('删除会话失败', err)
-      // 失败回滚 UI
       setConversations(prevConversations)
     } finally {
       setDeletingId(null)
     }
   }
 
-  // S03-8: 全局登录守卫——未登录只渲染全屏登录页
+  // 登录守卫
   if (!token) {
     return (
       <LoginModal
@@ -465,7 +458,7 @@ function App() {
 
   return (
     <div className="app-shell">
-      {/* PC 端固定侧边栏 */}
+      {/* PC sidebar */}
       <div className="hidden md:block h-full">
         <Sidebar
           conversations={conversations}
@@ -480,7 +473,7 @@ function App() {
         />
       </div>
 
-      {/* 移动端抽屉侧边栏 */}
+      {/* Mobile overlay */}
       {sidebarOpen && (
         <div className="mobile-overlay" onClick={() => setSidebarOpen(false)} />
       )}
@@ -498,28 +491,16 @@ function App() {
         />
       </div>
 
-      <div className="main-column">
+      <div className={`main-column ${writingOpen ? 'writing-open' : ''}`}>
         <Header
-          title={currentView === 'home' ? '政企智能助手' : (conversations.find(c => c.id === currentSessionId)?.title || '新对话')}
-          onMenu={() => setSidebarOpen(true)}
+          activePanel={activePanel}
+          onPanelChange={setActivePanel}
           onWriting={() => setWritingOpen(true)}
+          onMenu={() => setSidebarOpen(true)}
+          user={user}
+          onLogout={handleLogout}
+          model={model}
         />
-
-        <div className="app-tabs">
-          <button className={activePanel === 'qa' ? 'app-tab active' : 'app-tab'} onClick={() => setActivePanel('qa')}>智能问答</button>
-          <button className={activePanel === 'guide' ? 'app-tab active' : 'app-tab'} onClick={() => setActivePanel('guide')}>我要办事</button>
-          <button className={activePanel === 'compare' ? 'app-tab active' : 'app-tab'} onClick={() => setActivePanel('compare')}>政策比对</button>
-          <div className="app-tabs-right">
-            {user ? (
-              <>
-                <span className="app-user">{user.username}</span>
-                <button className="app-user-btn" onClick={handleLogout}>退出</button>
-              </>
-            ) : (
-              <button className="app-user-btn" onClick={() => setLoginOpen(true)}>登录</button>
-            )}
-          </div>
-        </div>
 
         {activePanel === 'guide' ? (
           <div className="guide-panel">
@@ -531,23 +512,23 @@ function App() {
           </div>
         ) : (
           <>
-        <div className={`chat-stream ${currentView === 'home' && messages.length === 0 ? 'home' : ''}`}>
-          {currentView === 'home' && messages.length === 0 ? (
-            <WelcomeScreen onQuickAction={handleSendMessage} disabled={isStreaming || isLoading} />
-          ) : (
-            <MessageList
-              messages={messages}
-              isLoading={isLoading}
-              isStreaming={isStreaming}
-              currentSessionId={currentSessionId}
-              onStop={handleStop}
-              onRegenerate={(content) => handleSendMessage(content, undefined, true)}
-              onFollowUp={(prompt) => handleSendMessage(prompt, undefined, true)}
-            />
-          )}
-        </div>
+            <div className={`chat-stream ${currentView === 'home' && messages.length === 0 ? 'home' : ''}`}>
+              {currentView === 'home' && messages.length === 0 ? (
+                <WelcomeScreen onQuickAction={handleSendMessage} disabled={isStreaming || isLoading} />
+              ) : (
+                <MessageList
+                  messages={messages}
+                  isLoading={isLoading}
+                  isStreaming={isStreaming}
+                  currentSessionId={currentSessionId}
+                  onStop={handleStop}
+                  onRegenerate={(content) => handleSendMessage(content, undefined, true)}
+                  onFollowUp={(prompt) => handleSendMessage(prompt, undefined, true)}
+                />
+              )}
+            </div>
 
-        <ChatInput onSend={handleSendMessage} onStop={handleStop} disabled={isStreaming || isLoading} model={model} onModelChange={setModel} />
+            <ChatInput onSend={handleSendMessage} onStop={handleStop} disabled={isStreaming || isLoading} model={model} onModelChange={setModel} />
           </>
         )}
 
@@ -594,8 +575,8 @@ function App() {
           <div className="ua-overlay" onClick={() => setUserAdminOpen(false)}>
             <div className="ua-panel" onClick={(e) => e.stopPropagation()} style={{maxWidth:380,textAlign:'center',padding:'32px 28px'}}>
               <div style={{fontSize:40,marginBottom:12}}>🔒</div>
-              <h3 style={{margin:'0 0 8px',fontSize:16,color:'#1A2433'}}>无访问权限</h3>
-              <p style={{margin:'0 0 20px',fontSize:13,color:'#8A94A6',lineHeight:1.6}}>当前账号无用户管理权限，<br/>请联系管理员。</p>
+              <h3 style={{margin:'0 0 8px',fontSize:16,color:'var(--text-primary)'}}>无访问权限</h3>
+              <p style={{margin:'0 0 20px',fontSize:13,color:'var(--text-secondary)',lineHeight:1.6}}>当前账号无用户管理权限，<br/>请联系管理员。</p>
               <button className="ua-btn ua-btn-primary" onClick={() => setUserAdminOpen(false)} style={{width:'100%'}}>我知道了</button>
             </div>
           </div>

@@ -1,4 +1,5 @@
 import type { StructuredAnswer } from '../types'
+import Icon from './Icons'
 
 interface Props {
   data: StructuredAnswer
@@ -27,7 +28,7 @@ export default function ServiceCard({ data }: Props) {
   if (empty) return null
 
   return (
-    <div className="service-card">
+    <div className="svc-card">
       <div className="svc-head">
         <span className="svc-badge">办事指南</span>
         {hasText(item_name) && <h4 className="svc-title">{item_name}</h4>}
@@ -40,12 +41,13 @@ export default function ServiceCard({ data }: Props) {
       {showMaterials && (
         <section className="svc-section">
           <div className="svc-section-title">
-            <span className="svc-icon">📋</span> 所需材料
+            <Icon name="file-text" size={15} />
+            <span>所需材料</span>
           </div>
           <ul className="svc-list svc-materials">
             {required_materials!.filter(Boolean).map((m, i) => (
               <li key={i}>
-                <span className="svc-check" />
+                <span className="svc-check"><Icon name="check" size={11} /></span>
                 <span>{m}</span>
               </li>
             ))}
@@ -56,7 +58,8 @@ export default function ServiceCard({ data }: Props) {
       {showSteps && (
         <section className="svc-section">
           <div className="svc-section-title">
-            <span className="svc-icon">📝</span> 办理流程
+            <Icon name="edit" size={15} />
+            <span>办理流程</span>
           </div>
           <ol className="svc-list svc-steps">
             {steps!.filter(Boolean).map((s, i) => (
@@ -73,7 +76,7 @@ export default function ServiceCard({ data }: Props) {
         <section className="svc-meta-grid">
           {hasText(location) && (
             <div className="svc-meta-item">
-              <span className="svc-meta-icon">📍</span>
+              <span className="svc-meta-icon"><Icon name="map-pin" size={15} /></span>
               <div>
                 <div className="svc-meta-label">办理地点</div>
                 <div className="svc-meta-value">{location}</div>
@@ -82,7 +85,7 @@ export default function ServiceCard({ data }: Props) {
           )}
           {hasText(time_limit) && (
             <div className="svc-meta-item">
-              <span className="svc-meta-icon">⏰</span>
+              <span className="svc-meta-icon"><Icon name="clock" size={15} /></span>
               <div>
                 <div className="svc-meta-label">办理时限</div>
                 <div className="svc-meta-value">{time_limit}</div>
@@ -91,7 +94,7 @@ export default function ServiceCard({ data }: Props) {
           )}
           {hasText(fee) && (
             <div className="svc-meta-item">
-              <span className="svc-meta-icon">💰</span>
+              <span className="svc-meta-icon"><Icon name="dollar" size={15} /></span>
               <div>
                 <div className="svc-meta-label">收费标准</div>
                 <div className="svc-meta-value">{fee}</div>
@@ -100,7 +103,7 @@ export default function ServiceCard({ data }: Props) {
           )}
           {hasText(consult_phone) && (
             <div className="svc-meta-item">
-              <span className="svc-meta-icon">📞</span>
+              <span className="svc-meta-icon"><Icon name="phone" size={15} /></span>
               <div>
                 <div className="svc-meta-label">咨询电话</div>
                 <div className="svc-meta-value svc-phone">{consult_phone}</div>

@@ -42,6 +42,17 @@ function groupByDate(items: Conversation[]): Group[] {
   return groups.filter((g) => g.items.length > 0)
 }
 
+function roleLabel(role?: string): string {
+  if (role === 'super_admin') return '超管'
+  if (role === 'admin') return '管理员'
+  return '用户'
+}
+
+function userInitial(username?: string): string {
+  if (!username) return '?'
+  return username.charAt(0).toUpperCase()
+}
+
 export default function Sidebar({
   conversations,
   currentSessionId,
@@ -61,9 +72,9 @@ export default function Sidebar({
         <div className="side-logo">
           <div className="logo-mark" aria-hidden="true">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3 21h18"/>
-              <path d="M5 21V7l7-4 7 4v14"/>
-              <path d="M9 21v-6h6v6"/>
+              <path d="M3 21h18" />
+              <path d="M5 21V7l7-4 7 4v14" />
+              <path d="M9 21v-6h6v6" />
             </svg>
           </div>
           <span>政企智能助手</span>
@@ -85,13 +96,17 @@ export default function Sidebar({
                 const active = conv.id === currentSessionId
                 const isDeleting = deletingId === conv.id
                 return (
-                  <div key={conv.id} className="conv-item-row group">
+                  <div key={conv.id} className="conv-item-row">
                     <button
                       onClick={() => !isDeleting && onSelectConversation(conv.id)}
                       className={`conv-item ${active ? 'active' : ''}`}
                       disabled={isDeleting}
                       style={isDeleting ? { opacity: 0.5 } : undefined}
+                      title={conv.title || '新对话'}
                     >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, opacity: 0.65 }}>
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                      </svg>
                       <span className="conv-item-text">{conv.title || '新对话'}</span>
                       <span
                         className="conv-del"
@@ -104,7 +119,7 @@ export default function Sidebar({
                         }}
                         style={isDeleting ? { pointerEvents: 'none', opacity: 0.4 } : undefined}
                       >
-                        {isDeleting ? '…' : <Icon name="x" size={14} />}
+                        {isDeleting ? '…' : <Icon name="x" size={13} />}
                       </span>
                     </button>
                   </div>
@@ -119,10 +134,11 @@ export default function Sidebar({
         {user ? (
           <div className="side-foot-inner">
             <div className="side-foot-user">
-              <span className="side-foot-avatar">👤</span>
+              <span className="side-foot-avatar">{userInitial(user.username)}</span>
               <span className="side-foot-name" title={user.username}>{user.username}</span>
-              {user.role === 'super_admin' && <span className="side-foot-badge side-foot-badge-super">超管</span>}
-              {user.role === 'admin' && <span className="side-foot-badge side-foot-badge-admin">管理员</span>}
+              <span className={`side-foot-badge ${user.role === 'super_admin' ? 'side-foot-badge-super' : 'side-foot-badge-admin'}`}>
+                {roleLabel(user.role)}
+              </span>
             </div>
             <div className="side-foot-actions">
               {(user.role === 'admin' || user.role === 'super_admin') && onOpenUserAdmin && (
@@ -138,7 +154,7 @@ export default function Sidebar({
             </div>
           </div>
         ) : (
-          <span>未登录</span>
+          <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 13 }}>未登录</span>
         )}
       </div>
     </aside>

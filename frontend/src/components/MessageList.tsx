@@ -132,10 +132,10 @@ function MessageItem({
   }
 
   return (
-    <div className={`msg ${isUser ? 'user' : 'ai'}`}>
-      <div className={isUser ? 'user-avatar' : `ai-avatar${streaming && !isUser ? ' streaming' : ''}`}>{isUser ? '我' : '政'}</div>
+    <div className={`msg-item ${isUser ? 'user' : 'assistant'}`}>
+      <div className="msg-avatar">{isUser ? '我' : '政'}</div>
       <div className="msg-body">
-        <div className={`bubble-ai${isWriting ? ' writing-doc' : ''}${message.structuredAnswer ? ' has-svc-card' : ''}`}>
+        <div className={`msg-bubble${isWriting ? ' writing-doc' : ''}`}>
           <MarkdownContent content={shownContent} />
           {isLong && !expanded && (
             <button className="collapse-toggle" onClick={() => setExpanded(true)}>展开全文</button>
@@ -143,22 +143,26 @@ function MessageItem({
           {isLong && expanded && (
             <button className="collapse-toggle" onClick={() => setExpanded(false)}>收起</button>
           )}
-          {message.structuredAnswer && (
-            <ServiceCard data={message.structuredAnswer} />
-          )}
         </div>
+
+        {message.structuredAnswer && (
+          <ServiceCard data={message.structuredAnswer} />
+        )}
+
         {!streaming && !refusal && (
           <div className="msg-actions">
-            <button className="mini-btn" onClick={handleCopy}>{copied ? '✓ 已复制' : <><Icon name="copy" size={13} /> 复制</>}</button>
+            <button className="msg-action-btn" onClick={handleCopy}>
+              {copied ? <><Icon name="check" size={13} /> 已复制</> : <><Icon name="copy" size={13} /> 复制</>}
+            </button>
             {isWriting && (
-              <button className="mini-btn export-btn" onClick={handleExportDocx} disabled={exporting}>
+              <button className="msg-action-btn" onClick={handleExportDocx} disabled={exporting}>
                 <Icon name="download" size={13} /> {exporting ? '导出中…' : '导出Word'}
               </button>
             )}
             {!isUser && (
               <>
                 <button
-                  className={`mini-btn ${feedback === 'up' ? 'active' : ''}`}
+                  className={`msg-action-btn ${feedback === 'up' ? 'active' : ''}`}
                   onClick={() => handleFeedback('up')}
                   disabled={feedbackSent}
                   title="满意"
@@ -166,19 +170,26 @@ function MessageItem({
                   <Icon name="thumbs-up" size={13} />
                 </button>
                 <button
-                  className={`mini-btn ${feedback === 'down' ? 'active' : ''}`}
+                  className={`msg-action-btn ${feedback === 'down' ? 'active' : ''}`}
                   onClick={() => handleFeedback('down')}
                   disabled={feedbackSent}
                   title="不满意"
                 >
                   <Icon name="thumbs-down" size={13} />
                 </button>
-                {onRegenerate && <button className="mini-btn" onClick={() => onRegenerate(message.content)}><Icon name="refresh" size={13} /> 重新生成</button>}
+                {onRegenerate && (
+                  <button className="msg-action-btn" onClick={() => onRegenerate(message.content)}>
+                    <Icon name="refresh" size={13} /> 重新生成
+                  </button>
+                )}
               </>
             )}
-            {!isUser && message.model && <span className="stream-meta">已完成 · {message.model === 'minimax' ? 'MiniMax' : 'DeepSeek'}</span>}
+            {!isUser && message.model && (
+              <span className="stream-meta">已完成 · {message.model === 'minimax' ? 'MiniMax' : 'DeepSeek'}</span>
+            )}
           </div>
         )}
+
         {!isUser && showDownComment && !feedbackSent && (
           <div className="feedback-comment">
             <textarea
@@ -188,35 +199,40 @@ function MessageItem({
               rows={2}
             />
             <div className="feedback-comment-actions">
-              <button className="mini-btn" onClick={() => { setShowDownComment(false); setFeedback(null) }}>取消</button>
-              <button className="mini-btn primary" onClick={submitDownFeedback}>提交</button>
+              <button className="msg-action-btn" onClick={() => { setShowDownComment(false); setFeedback(null) }}>取消</button>
+              <button className="msg-action-btn active" onClick={submitDownFeedback}>提交</button>
             </div>
           </div>
         )}
         {!isUser && feedbackSent && (
           <span className="feedback-thanks">感谢反馈</span>
         )}
+
         {!isUser && chips.length > 0 && (
-          <div className="followup-row">
+          <div className="follow-up-row">
             {chips.map((chip) => (
-              <button key={chip} className="followup-chip" onClick={() => onFollowUp?.(chip)}>
+              <button key={chip} className="follow-up-chip" onClick={() => onFollowUp?.(chip)}>
                 {chip}
               </button>
             ))}
           </div>
         )}
+
         {!isUser && !refusal && message.references && message.references.length > 0 && (
-          <div className="refs">
-            <button onClick={() => setShowRefs(!showRefs)} className="ref-head">
+          <div className="ref-section">
+            <button onClick={() => setShowRefs(!showRefs)} className="ref-toggle">
               {showRefs ? '▴ 收起引用来源' : '▾ 展开引用来源'}（{message.references.length}）
             </button>
             {showRefs && (
-              <div className="ref-body">
+              <div className="ref-list">
                 {message.references.map((ref, i) => (
                   <div key={i} className="ref-item">
-                    <b>[{i + 1}] {ref.title}</b>
-                    <div className="ref-meta">来源：{ref.source}</div>
-                    <div className="ref-meta">{ref.snippet}</div>
+                    <div className="ref-num">{i + 1}</div>
+                    <div>
+                      <div className="ref-title">{ref.title}</div>
+                      <div className="ref-source">来源：{ref.source}</div>
+                      <div className="ref-snippet">{ref.snippet}</div>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -241,7 +257,7 @@ export default function MessageList({ messages, isLoading, isStreaming = false, 
   const streamingLatestId = isStreaming && !isLoading && latestAiId != null ? latestAiId : null
 
   return (
-    <div className="chat-inner">
+    <div className="msg-list">
       {messages.map((msg) => (
         <MessageItem
           key={msg.id}
@@ -255,19 +271,18 @@ export default function MessageList({ messages, isLoading, isStreaming = false, 
         />
       ))}
       {isLoading && (
-        <div className="msg ai">
-          <div className="ai-avatar streaming">政</div>
+        <div className="msg-item assistant">
+          <div className="msg-avatar">政</div>
           <div className="msg-body">
-            <div className="bubble-ai">
-              <span className="loading-dots">
-                <span className="loading-dot" />
-                <span className="loading-dot" style={{ animationDelay: '0.2s' }} />
-                <span className="loading-dot" style={{ animationDelay: '0.4s' }} />
+            <div className="msg-bubble">
+              <span className="typing-indicator">
+                <span />
+                <span />
+                <span />
               </span>
-              <span className="typing-cursor" />
             </div>
             <div className="msg-actions">
-              {onStop && <button className="mini-btn stop" onClick={onStop}><Icon name="square" size={12} /> 停止生成</button>}
+              {onStop && <button className="msg-action-btn" onClick={onStop}><Icon name="square" size={12} /> 停止生成</button>}
             </div>
           </div>
         </div>

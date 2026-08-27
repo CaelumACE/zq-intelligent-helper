@@ -18,24 +18,38 @@ const MODEL_LABEL: Record<ModelProvider, string> = {
 export default function ChatInput({ onSend, onStop, disabled = false, model, onModelChange }: ChatInputProps) {
   const [value, setValue] = useState('')
   const [modelOpen, setModelOpen] = useState(false)
-  const inputRef = useRef<HTMLTextAreaElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
   const prevDisabledRef = useRef(disabled)
 
+  // 自适应高度
   useEffect(() => {
-    // 流式/加载结束后（disabled 从 true 变回 false）自动把光标送回输入框
+    const ta = textareaRef.current
+    if (!ta) return
+    ta.style.height = 'auto'
+    ta.style.height = Math.min(ta.scrollHeight, 140) + 'px'
+  }, [value])
+
+  useEffect(() => {
     if (!disabled && prevDisabledRef.current) {
-      inputRef.current?.focus()
+      textareaRef.current?.focus()
     }
     prevDisabledRef.current = disabled
   }, [disabled])
+
+  // 点击外部关闭模型下拉
+  useEffect(() => {
+    if (!modelOpen) return
+    const handler = () => setModelOpen(false)
+    window.addEventListener('click', handler)
+    return () => window.removeEventListener('click', handler)
+  }, [modelOpen])
 
   const handleSend = () => {
     const content = value.trim()
     if (!content || disabled) return
     onSend(content)
     setValue('')
-    // 发送后立即把光标放回输入框；若流式期间被 disabled，待完成后再恢复
-    window.setTimeout(() => inputRef.current?.focus(), 0)
+    window.setTimeout(() => textareaRef.current?.focus(), 0)
   }
 
   const handlePrimary = () => {
@@ -54,52 +68,47 @@ export default function ChatInput({ onSend, onStop, disabled = false, model, onM
   }
 
   return (
-    <div className="chat-input">
-      <div className={`stream-banner ${disabled ? 'show' : ''}`}>
-        <span className="dot" />
-        AI 正在回复中，请等待完成后再发送
-      </div>
-      <div className="input-card">
-        <textarea
-          ref={inputRef}
-          autoFocus
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="输入您的问题，Enter 发送，Shift+Enter 换行…"
-          rows={4}
-          className="chat-textarea"
-          disabled={disabled}
-        />
-        <div className="input-toolbar">
-          <button className="toolbar-plus" type="button" aria-label="添加" title="添加"><Icon name="plus" size={18} /></button>
-          <div className="toolbar-right">
-            <div className="model-dropdown">
-              <button
-                className="model-dropdown-trigger"
-                type="button"
-                disabled={disabled}
-                onClick={() => setModelOpen(v => !v)}
-                title="切换底层大模型"
-              >
-<Icon name="search" size={15} />
+    <div className="chat-input-wrap">
+      <div className="chat-input-inner">
+        {disabled && (
+          <div className="stream-banner show">
+            <span className="stream-dot" />
+            AI 正在回复中，请等待完成后再发送
+          </div>
+        )}
+        <div className="input-wrapper">
+          <textarea
+            ref={textareaRef}
+            autoFocus
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="输入您的问题，Enter 发送，Shift+Enter 换行…"
+            rows={1}
+            className="input-field"
+            disabled={disabled}
+          />
+          <div className="input-toolbar">
+            <div className="toolbar-left">
+              <div className="model-select" onClick={(e) => { e.stopPropagation(); setModelOpen(v => !v) }}>
+                <Icon name="search" size={13} />
                 <span>{MODEL_LABEL[model]}</span>
-<Icon name="chevron-down" size={12} />
-              </button>
+                <Icon name="chevron-down" size={11} />
+              </div>
               {modelOpen && (
-                <div className="dropdown-menu">
+                <div className="model-select-menu">
                   {Object.entries(MODEL_LABEL).map(([key, label]) => (
                     <button
                       key={key}
                       type="button"
-                      className={model === key ? 'active' : ''}
+                      className={`model-select-item ${model === key ? 'active' : ''}`}
                       onClick={() => {
                         onModelChange(key as ModelProvider)
                         setModelOpen(false)
                       }}
                     >
                       <span>{label}</span>
-                      {model === key && <span aria-hidden="true">✓</span>}
+                      {model === key && <Icon name="check" size={13} />}
                     </button>
                   ))}
                 </div>
@@ -108,18 +117,16 @@ export default function ChatInput({ onSend, onStop, disabled = false, model, onM
             <button
               onClick={handlePrimary}
               disabled={!disabled && !value.trim()}
-              className={`send-icon-btn ${disabled ? 'streaming' : ''}`}
+              className={`send-btn ${disabled ? 'stop' : ''}`}
               aria-label={disabled ? '停止' : '发送'}
               title={disabled ? '停止' : '发送'}
             >
-              {disabled ? <Icon name="square" size={15} /> : <Icon name="send" size={18} />}
+              {disabled ? <Icon name="square" size={14} /> : <Icon name="send" size={16} />}
             </button>
           </div>
         </div>
+        <p className="input-hint">内容由 AI 生成，请以官方文件为准</p>
       </div>
-      <p className="input-hint">
-        内容由 AI 生成，请以官方文件为准
-      </p>
     </div>
   )
 }
