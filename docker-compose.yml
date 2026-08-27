@@ -45,6 +45,7 @@ services:
       - RERANK_BASE_URL=${RERANK_BASE_URL:-}
       - RERANK_API_KEY=${RERANK_API_KEY:-}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost,http://127.0.0.1}
+      - UVICORN_WORKERS=${UVICORN_WORKERS:-2}
       - DATA_DIR=/app/data
     volumes:
       - ./data:/app/data

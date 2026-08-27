@@ -450,6 +450,66 @@ class KnowledgeService:
             return results[:top_k]
         return rerank_service.rerank_sync(query, results)[:top_k]
 
+    async def search_async(self, query: str, top_k: int = 5, apply_rerank: bool = True) -> List[Dict[str, Any]]:
+        """search() 的异步版。检索阶段本身是轻型关键词匹配，不需要跑线程池；
+        语义向量召回（pgvector）是同步 SQL 调用，放在线程池避免阻塞事件循环。"""
+        import asyncio
+        query_lower = query.lower()
+        if self._is_greeting(query_lower):
+            return []
+        alias_extra, alias_hit = self.resolve_alias(query_lower)
+        if alias_hit and alias_hit.get('uncovered'):
+            return []
+        expanded_query = self._expand_query(query_lower)
+        if alias_extra:
+            expanded_query = (expanded_query + ' ' + alias_extra).strip()
+        category = self._detect_category(query_lower)
+        writing_intent = self.is_writing_intent(query_lower)
+        query_vec = await asyncio.to_thread(self._embed_query, query_lower)
+        pg_scores = await asyncio.to_thread(self._vector_scores, query_vec, top_k, query_lower) if query_vec is not None else {}
+
+        results = []
+        for i, chunk in enumerate(self.chunks):
+            text = f"{chunk['title']} {chunk['summary']} {chunk.get('keywords', '')} {chunk.get('category', '')}"
+            score = self._keyword_score(expanded_query, text)
+            score += self._semantic_score(query_vec, i, chunk, pg_scores)
+            if category and category in chunk.get('category', ''):
+                score += 2.0
+            if writing_intent and chunk.get('type') == 'template':
+                score += self._template_type_bonus(query_lower, chunk)
+            if not writing_intent and chunk.get('type') == 'template':
+                score -= 4.0
+            if alias_hit and chunk['id'] in alias_hit.get('target_ids', []):
+                score += 10.0
+            score += self._title_bonus(query_lower, chunk['title'])
+            if score > 0:
+                result = {
+                    'id': chunk['id'],
+                    'type': chunk['type'],
+                    'title': chunk['title'],
+                    'category': chunk['category'],
+                    'snippet': (chunk.get('context_text') or chunk.get('summary') or '')[:800],
+                    'context_text': (chunk.get('context_text') or chunk.get('summary') or '')[:4000],
+                    'source': chunk['source'],
+                    'score': score,
+                }
+                if chunk.get('raw_data') is not None:
+                    result['raw_data'] = chunk['raw_data']
+                results.append(result)
+
+        results.sort(key=lambda x: x['score'], reverse=True)
+        if not results:
+            return []
+        top_score = max(r['score'] for r in results)
+        absolute_threshold = self._absolute_threshold(query_lower, top_score)
+        min_score = max(absolute_threshold, top_score * 0.35)
+        results = [r for r in results if r['score'] >= min_score]
+        if not results:
+            return []
+        if not apply_rerank:
+            return results[:top_k]
+        return (await rerank_service.rerank_async(query, results))[:top_k]
+
     def _is_greeting(self, query_lower: str) -> bool:
         # 仅保留中英文/数字，去除标点后做精确寒暄判断，避免“你好！”漏判
         clean = re.sub(r'[^0-9a-z\u4e00-\u9fff]+', '', query_lower.strip())
@@ -733,6 +793,28 @@ class KnowledgeService:
                 rewrite = pattern.get('rewrite', '').replace('{topic}', context_query)
                 return rewrite, pattern
         return None, None
+
+    async def search_follow_up_async(self, follow_text: str, context_query: str, top_k: int = 5) -> List[Dict[str, Any]]:
+        """后续指令检索的异步版：需要改写时并行双路召回，再按分数合并取 top_k。"""
+        import asyncio
+        rewrite, pattern = self.rewrite_follow_up(follow_text, context_query)
+        if not rewrite:
+            return await self.search_async(context_query, top_k=top_k)
+
+        # 主问题召回与改写召回并行执行，避免追问题目出现“串行两跳”的额外延迟。
+        preferred_task = asyncio.create_task(self.search_async(context_query, top_k=top_k))
+        extra_task = asyncio.create_task(self.search_async(rewrite, top_k=max(3, top_k)))
+        preferred = await preferred_task
+        extra = await extra_task
+        if not preferred:
+            return extra or await self.search_async(follow_text, top_k=top_k)
+
+        merged_seen = {r['id'] for r in preferred}
+        for candidate in extra:
+            if candidate['id'] not in merged_seen:
+                preferred.append(candidate)
+        preferred.sort(key=lambda x: x.get('score', 0.0), reverse=True)
+        return preferred[:top_k]
 
     def search_follow_up(self, follow_text: str, context_query: str, top_k: int = 5) -> List[Dict[str, Any]]:
         """后续指令检索：优先复用上一轮主问题召回；模板命中时再补一路改写检索。

@@ -593,10 +593,10 @@ async def chat(request: ChatRequest, user: UserOut = Depends(current_user)):
         retrieval_start = time.time()
         alias_extra, alias_hit = knowledge_service.resolve_alias(context_query)
         if is_follow_up:
-            search_results = knowledge_service.search_follow_up(request.message, context_query, top_k=5)
+            search_results = await knowledge_service.search_follow_up_async(request.message, context_query, top_k=5)
             context = knowledge_service.build_context_from_results(search_results)
         else:
-            search_results = knowledge_service.search(context_query, top_k=5)
+            search_results = await knowledge_service.search_async(context_query, top_k=5)
             context = None
         retrieval_time = (time.time() - retrieval_start) * 1000
         log_retrieval(_build_jsonl_record(
@@ -695,14 +695,14 @@ async def chat_stream(request: ChatRequest, user: UserOut = Depends(current_user
         search_results = []
     elif is_follow_up:
         context_query = _previous_user_query(request, session_id, user_id=user_id)
-        search_results = knowledge_service.search_follow_up(request.message, context_query, top_k=5)
+        search_results = await knowledge_service.search_follow_up_async(request.message, context_query, top_k=5)
     elif is_greeting:
         context_query = request.message
         search_results = []
     else:
         context_query = request.message
         alias_extra, alias_hit = knowledge_service.resolve_alias(request.message)
-        search_results = knowledge_service.search(request.message, top_k=5)
+        search_results = await knowledge_service.search_async(request.message, top_k=5)
     if not alias_extra:
         alias_extra, alias_hit = knowledge_service.resolve_alias(context_query)
     retrieval_time = (time.time() - retrieval_start) * 1000

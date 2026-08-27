@@ -31,6 +31,11 @@ class LLMService:
             }
         raise ValueError(f"Unknown provider: {provider}")
 
+    @staticmethod
+    def _limits():
+        """多 worker 下为每个 AsyncClient 设置保守连接池上限，避免连接数爆炸。"""
+        return httpx.Limits(max_connections=20, max_keepalive_connections=10)
+
     async def chat(self, messages: list, stream: bool = False, provider: str | None = None) -> dict | AsyncGenerator:
         """调用大模型对话接口。provider 可临时覆盖当前实例的 provider。"""
         current = provider or self.provider
@@ -56,7 +61,7 @@ class LLMService:
         }
         if stream:
             return self._stream_response(url, headers, payload)
-        async with httpx.AsyncClient(timeout=120.0) as client:
+        async with httpx.AsyncClient(timeout=120.0, limits=LLMService._limits()) as client:
             response = await client.post(url, headers=headers, json=payload)
             response.raise_for_status()
             return response.json()
@@ -76,14 +81,14 @@ class LLMService:
         }
         if stream:
             return self._stream_response(url, headers, payload)
-        async with httpx.AsyncClient(timeout=120.0) as client:
+        async with httpx.AsyncClient(timeout=120.0, limits=LLMService._limits()) as client:
             response = await client.post(url, headers=headers, json=payload)
             response.raise_for_status()
             return response.json()
 
     async def _stream_response(self, url: str, headers: dict, payload: dict) -> AsyncGenerator:
         """流式响应：仅产出增量文本片段。"""
-        async with httpx.AsyncClient(timeout=120.0) as client:
+        async with httpx.AsyncClient(timeout=120.0, limits=LLMService._limits()) as client:
             async with client.stream("POST", url, headers=headers, json=payload) as response:
                 response.raise_for_status()
                 async for line in response.aiter_lines():

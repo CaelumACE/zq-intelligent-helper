@@ -181,9 +181,9 @@ async def test_search(query: str, top_k: int = 8, rerank: bool = True, user=Depe
 
     try:
         top_k = min(max(int(top_k), 1), 20)
-        pre_rank = knowledge_service.search(query, top_k=max(top_k * 4, 10), apply_rerank=False)
+        pre_rank = await knowledge_service.search_async(query, top_k=max(top_k * 4, 10), apply_rerank=False)
         if rerank:
-            candidate_rank = rerank_service.rerank_sync(query, pre_rank)
+            candidate_rank = await rerank_service.rerank_async(query, pre_rank)
         else:
             candidate_rank = pre_rank
         final = candidate_rank[:top_k]

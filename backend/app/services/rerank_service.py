@@ -68,7 +68,7 @@ class RerankService:
             "Authorization": f"Bearer {settings.RERANK_API_KEY}",
             "Content-Type": "application/json",
         }
-        with httpx.Client(timeout=20.0) as client:
+        with httpx.Client(timeout=20.0, limits=httpx.Limits(max_connections=20, max_keepalive_connections=10)) as client:
             response = client.post(url, headers=headers, json=payload)
             response.raise_for_status()
             data = response.json()
@@ -86,7 +86,7 @@ class RerankService:
             "Authorization": f"Bearer {settings.RERANK_API_KEY}",
             "Content-Type": "application/json",
         }
-        async with httpx.AsyncClient(timeout=20.0) as client:
+        async with httpx.AsyncClient(timeout=20.0, limits=httpx.Limits(max_connections=20, max_keepalive_connections=10)) as client:
             response = await client.post(url, headers=headers, json=payload)
             response.raise_for_status()
             data = response.json()
