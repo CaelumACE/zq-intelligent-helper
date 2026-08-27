@@ -161,10 +161,10 @@ def _service_context_text(results) -> str:
             parts.append(f"[{r.get('title')}]\n{text}")
     return "\n\n".join(parts)
 
-def _build_service_answer(search_results) -> Optional[StructuredAnswer]:
+def _build_service_answer(search_results, message: str = "") -> Optional[StructuredAnswer]:
     """构建办事指南卡片结构化数据；非 service 结果或无原始事项时返回 None。"""
     try:
-        data = knowledge_service.get_service_answer(search_results)
+        data = knowledge_service.get_service_answer(search_results, query=message)
         if not data:
             return None
         return StructuredAnswer(**data)
@@ -173,20 +173,24 @@ def _build_service_answer(search_results) -> Optional[StructuredAnswer]:
         return None
 
 
-def _build_service_llm_messages(request: ChatRequest, session_id: str, context: str, user_id=None):
-    """service 意图的引导语生成：只让 LLM 输出一句简短引导，不带字段。"""
+def _build_service_llm_messages(request: ChatRequest, session_id: str, structured_answer: Optional[StructuredAnswer], user_id=None):
+    """service 意图的短引导语生成：字段全部由卡片直出，LLM 只允许说一句开场白。"""
     from app.models import ChatMessage
-    style = _style_section("rag_service_reply")
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-    guide_prompt = (
-        "当前用户需要办事指引。结构化字段已经由系统直接给出，你只需要生成一句不超过50字的引导语，"
-        "例如“以下是灵活就业人员社会保险参保登记的办理指南：”，不要复述或改写任何办理字段。"
-    )
-    if style:
-        guide_prompt += "\n\n回复风格要求：\n" + style
+    item_name = (structured_answer.item_name or "").strip() if structured_answer else ""
+    if item_name:
+        guide_prompt = (
+            f"用户正在咨询办事事项「{item_name}」。该事项的材料、流程、地点、时限、费用、电话等字段"
+            "已经由系统在前端以办理指南卡片直接展示，用户能看到。"
+            "你现在只允许输出一句不超过50字的开场引导语，例如“以下是「" + item_name + "」的办理指南：”。"
+            "严禁罗列材料清单、严禁复述办理流程步骤、严禁重新输出任何卡片字段。"
+        )
+    else:
+        guide_prompt = (
+            "用户正在咨询一项办事事项。该事项的字段已经由系统在前端卡片直接展示。"
+            "你只允许输出一句不超过50字的开场引导语，严禁罗列材料、复述流程或输出卡片字段。"
+        )
     messages.append({"role": "system", "content": guide_prompt})
-    if context:
-        messages.append({"role": "system", "content": f"参考资料：\n{context}"})
     history = []
     if request.history:
         history = [m.to_dict() if isinstance(m, ChatMessage) else m for m in request.history]
@@ -616,9 +620,9 @@ async def chat(request: ChatRequest, user: UserOut = Depends(current_user)):
                 context = _service_context_text(search_results) if intent == 'service' else knowledge_service.build_context(context_query, top_k=5)
             # 公文写作是生成类任务，引用来源不放大模型生成前的检索命中，避免“写作结果挂检索引用”
             references = [] if intent == 'writing' else knowledge_service.get_references(search_results)
-            structured_answer = _build_service_answer(search_results) if intent == 'service' else None
+            structured_answer = _build_service_answer(search_results, request.message)
             if structured_answer is not None:
-                messages = _build_service_llm_messages(request, session_id, context, user_id=user_id)
+                messages = _build_service_llm_messages(request, session_id, structured_answer, user_id=user_id)
             else:
                 messages = _build_messages(request, session_id, intent, context, user_id=user_id)
 
@@ -709,7 +713,7 @@ async def chat_stream(request: ChatRequest, user: UserOut = Depends(current_user
     # 公文写作/修改是生成类任务，其检索仅用于取写作模板，不向用户展示引用来源
     references = [] if intent in ('writing', 'writing_revise') else knowledge_service.get_references(search_results)
     context = _service_context_text(search_results) if (search_results and intent == 'service') else (knowledge_service.build_context_from_results(search_results) if search_results else "")
-    structured_answer = _build_service_answer(search_results) if (search_results and intent == 'service') else None
+    structured_answer = _build_service_answer(search_results, request.message) if search_results else None
 
     # 元信息一次性下发
     meta = {
@@ -807,7 +811,7 @@ async def chat_stream(request: ChatRequest, user: UserOut = Depends(current_user
             yield "data: [DONE]\n\n"
             return
 
-        if search_results and intent == 'service' and structured_answer is not None:
+        if structured_answer is not None:
             yield f"data: {json.dumps({'type': 'structured_answer', 'data': structured_answer.model_dump()}, ensure_ascii=False)}\n\n"
 
         if not search_results:
@@ -821,7 +825,7 @@ async def chat_stream(request: ChatRequest, user: UserOut = Depends(current_user
             return
 
         if structured_answer is not None:
-            messages = _build_service_llm_messages(request, session_id, context, user_id=user_id)
+            messages = _build_service_llm_messages(request, session_id, structured_answer, user_id=user_id)
         else:
             messages = _build_messages(request, session_id, intent, context, user_id=user_id)
         accumulated: List[str] = []

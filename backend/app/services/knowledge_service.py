@@ -298,6 +298,7 @@ class KnowledgeService:
                 'source': '政务服务',
                 'keywords': self._extract_service_keywords(item),
                 'context_text': self._build_service_context(item),
+                'raw_data': item,
             }
             self.chunks.append(chunk)
 
@@ -402,7 +403,7 @@ class KnowledgeService:
         pg_scores = self._vector_scores(query_vec, top_k, query_lower) if query_vec is not None else {}
 
         for i, chunk in enumerate(self.chunks):
-            text = f"{chunk['title']} {chunk['summary']} {chunk.get('keywords', '')}"
+            text = f"{chunk['title']} {chunk['summary']} {chunk.get('keywords', '')} {chunk.get('category', '')}"
             score = self._keyword_score(expanded_query, text)
             score += self._semantic_score(query_vec, i, chunk, pg_scores)
             if category and category in chunk.get('category', ''):
@@ -416,7 +417,7 @@ class KnowledgeService:
                 score += 10.0
             score += self._title_bonus(query_lower, chunk['title'])
             if score > 0:
-                results.append({
+                result = {
                     'id': chunk['id'],
                     'type': chunk['type'],
                     'title': chunk['title'],
@@ -425,7 +426,10 @@ class KnowledgeService:
                     'context_text': (chunk.get('context_text') or chunk.get('summary') or '')[:4000],
                     'source': chunk['source'],
                     'score': score,
-                })
+                }
+                if chunk.get('raw_data') is not None:
+                    result['raw_data'] = chunk['raw_data']
+                results.append(result)
 
         results.sort(key=lambda x: x['score'], reverse=True)
         if not results:
@@ -763,6 +767,7 @@ class KnowledgeService:
     def get_references(self, results: List[Dict[str, Any]]) -> List[Dict[str, str]]:
         return [
             {
+                'id': r.get('id'),
                 'title': r['title'],
                 'source': r['source'],
                 'snippet': r['snippet'],
@@ -770,20 +775,73 @@ class KnowledgeService:
             for r in results
         ]
 
-    def get_service_answer(self, results: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    def get_service_answer(self, results: List[Dict[str, Any]], query: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """从 service 检索结果还原办事事项的结构化数据，供前端卡片直出。
 
-        仅取第一条 service 结果对应的原始事项；非 service 或找不到原始数据时返回 None，
-        由调用方回退到通用文本模式。
+        只在有足够信号时才返回卡片，避免政策问答（如“退休年龄最新规定”、“医保报销比例对比”）
+        因检索结果中混入 service chunk 被误判成办事卡片。判定优先级：
+        1. 别名词表命中的目标里，若有 service 候选，优先在其中选（PM 维护的映射可信度高）；
+        2. 否则按“完整标题包含 + ngram 重叠 + 检索得分”综合打分选最优 service 候选；
+        3. 命中不足以支撑“办事意图”时返回 None，由上游回退通用文本模式。
         """
         if not results:
             return None
-        first = next((r for r in results if r.get('type') == 'service'), None)
-        if not first:
+        service_results = [r for r in results if r.get('type') == 'service']
+        if not service_results:
             return None
-        item_id = first.get('id')
-        item = next((x for x in self.documents.get('services', []) if x.get('id') == item_id), None)
-        if not item:
+
+        def _match_score(r: Dict[str, Any]) -> tuple:
+            """(完整包含, ngram重叠字符数, 检索得分)，标题匹配优先于原始分数。"""
+            title = str(r.get('title') or '')
+            t = self._clean_query(title)
+            contain = 2 if (q and t and (q in t or t in q)) else 0
+            overlap = 0
+            if q and t:
+                for n in (2, 3, 4):
+                    sq = {q[i:i + n] for i in range(len(q) - n + 1)} if len(q) >= n else set()
+                    st = {t[i:i + n] for i in range(len(t) - n + 1)} if len(t) >= n else set()
+                    overlap += len(sq & st)
+            return (contain, overlap, float(r.get('score') or 0.0))
+
+        q = self._clean_query(query) if query else ''
+        chosen = service_results[0]
+        target_ids: set = set()
+        has_policy_target = False
+        if q:
+            alias_extra, alias_hit = self.resolve_alias(query)
+            if alias_hit:
+                target_ids = set(alias_hit.get('target_ids') or [])
+                policy_ids = {d.get('id') for d in self.documents.get('policies', [])}
+                has_policy_target = bool(target_ids & policy_ids)
+                alias_candidates = [r for r in service_results if r.get('id') in target_ids]
+                if alias_candidates:
+                    service_results_for_pick = alias_candidates
+                else:
+                    service_results_for_pick = service_results
+            else:
+                service_results_for_pick = service_results
+            service_results_for_pick = sorted(service_results_for_pick, key=_match_score, reverse=True)
+            chosen = service_results_for_pick[0]
+
+        contain, overlap, _ = _match_score(chosen)
+        confident = bool(contain)
+        if q:
+            if not confident and target_ids and chosen.get('id') in target_ids and not has_policy_target:
+                # 别名词表只指向办事事项（无政策目标），视为可靠的办事意图
+                confident = True
+            if not confident and overlap >= 8:
+                confident = True
+        if not q:
+            # 无 query 时保守回退取第一条，理论上仅用于特殊调用；保留原行为
+            confident = True
+        if not chosen or not confident:
+            return None
+
+        item = chosen.get('raw_data')
+        if not isinstance(item, dict):
+            item_id = chosen.get('id')
+            item = next((x for x in self.documents.get('services', []) if x.get('id') == item_id), None)
+        if not isinstance(item, dict):
             return None
         materials = item.get('required_materials') or []
         steps = item.get('steps') or []

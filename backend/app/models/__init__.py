@@ -22,9 +22,10 @@ class Reference(BaseModel):
     title: str
     source: str
     snippet: str
+    id: Optional[str] = None
 
     def to_dict(self):
-        return {"title": self.title, "source": self.source, "snippet": self.snippet}
+        return {"id": self.id, "title": self.title, "source": self.source, "snippet": self.snippet}
 
 
 class StructuredAnswer(BaseModel):
