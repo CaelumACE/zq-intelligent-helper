@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 
-from app.models import ChatRequest, ChatResponse, Reference, ChatMessage
+from app.models import ChatRequest, ChatResponse, Reference, ChatMessage, StructuredAnswer
 from app.routers.auth import UserOut, current_user
 from app.services.knowledge_service import knowledge_service
 from app.services.llm_service import LLMService
@@ -160,6 +160,44 @@ def _service_context_text(results) -> str:
         if text:
             parts.append(f"[{r.get('title')}]\n{text}")
     return "\n\n".join(parts)
+
+def _build_service_answer(search_results) -> Optional[StructuredAnswer]:
+    """构建办事指南卡片结构化数据；非 service 结果或无原始事项时返回 None。"""
+    try:
+        data = knowledge_service.get_service_answer(search_results)
+        if not data:
+            return None
+        return StructuredAnswer(**data)
+    except Exception as exc:
+        logger.warning(f"构建办事结构化答案失败: {exc}")
+        return None
+
+
+def _build_service_llm_messages(request: ChatRequest, session_id: str, context: str, user_id=None):
+    """service 意图的引导语生成：只让 LLM 输出一句简短引导，不带字段。"""
+    from app.models import ChatMessage
+    style = _style_section("rag_service_reply")
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    guide_prompt = (
+        "当前用户需要办事指引。结构化字段已经由系统直接给出，你只需要生成一句不超过50字的引导语，"
+        "例如“以下是灵活就业人员社会保险参保登记的办理指南：”，不要复述或改写任何办理字段。"
+    )
+    if style:
+        guide_prompt += "\n\n回复风格要求：\n" + style
+    messages.append({"role": "system", "content": guide_prompt})
+    if context:
+        messages.append({"role": "system", "content": f"参考资料：\n{context}"})
+    history = []
+    if request.history:
+        history = [m.to_dict() if isinstance(m, ChatMessage) else m for m in request.history]
+    else:
+        history = session_store.get_history(session_id, user_id=user_id)
+    for msg in history[-6:]:
+        if isinstance(msg, dict):
+            messages.append({"role": msg["role"], "content": msg.get("content", "")})
+    messages.append({"role": "user", "content": request.message})
+    return messages
+
 
 def _build_writing_message(request: ChatRequest) -> str:
     """把公文写作面板结构化参数还原为完整写作指令。"""
@@ -562,6 +600,8 @@ async def chat(request: ChatRequest, user: UserOut = Depends(current_user)):
             search_results, retrieval_time,
         ))
 
+        structured_answer = None
+
         # 2. 无命中拒答
         if not search_results:
             if alias_hit and alias_hit.get('uncovered'):
@@ -576,7 +616,11 @@ async def chat(request: ChatRequest, user: UserOut = Depends(current_user)):
                 context = _service_context_text(search_results) if intent == 'service' else knowledge_service.build_context(context_query, top_k=5)
             # 公文写作是生成类任务，引用来源不放大模型生成前的检索命中，避免“写作结果挂检索引用”
             references = [] if intent == 'writing' else knowledge_service.get_references(search_results)
-            messages = _build_messages(request, session_id, intent, context, user_id=user_id)
+            structured_answer = _build_service_answer(search_results) if intent == 'service' else None
+            if structured_answer is not None:
+                messages = _build_service_llm_messages(request, session_id, context, user_id=user_id)
+            else:
+                messages = _build_messages(request, session_id, intent, context, user_id=user_id)
 
             # 3. 主通道 + 失败时切 DeepSeek 兜底
             generation_start = time.time()
@@ -601,6 +645,8 @@ async def chat(request: ChatRequest, user: UserOut = Depends(current_user)):
         assistant_msg = {"id": _new_message_id(), "role": "assistant", "content": content, "references": references, "timestamp": int(time.time() * 1000)}
         if intent == "writing":
             assistant_msg["status"] = "writing"
+        if structured_answer is not None:
+            assistant_msg["structured_answer"] = structured_answer.model_dump()
         session_store.add_messages(session_id, [user_msg, assistant_msg], user_id=user_id)
 
         logger.info(
@@ -612,6 +658,7 @@ async def chat(request: ChatRequest, user: UserOut = Depends(current_user)):
             session_id=session_id,
             content=content,
             references=[Reference(**ref) for ref in references],
+            structured_answer=structured_answer,
             retrieval_time_ms=retrieval_time,
             generation_time_ms=generation_time,
         )
@@ -662,6 +709,7 @@ async def chat_stream(request: ChatRequest, user: UserOut = Depends(current_user
     # 公文写作/修改是生成类任务，其检索仅用于取写作模板，不向用户展示引用来源
     references = [] if intent in ('writing', 'writing_revise') else knowledge_service.get_references(search_results)
     context = _service_context_text(search_results) if (search_results and intent == 'service') else (knowledge_service.build_context_from_results(search_results) if search_results else "")
+    structured_answer = _build_service_answer(search_results) if (search_results and intent == 'service') else None
 
     # 元信息一次性下发
     meta = {
@@ -670,6 +718,7 @@ async def chat_stream(request: ChatRequest, user: UserOut = Depends(current_user
         "references": references,
         "hit_count": len(search_results),
         "status": "smalltalk" if is_smalltalk else ("greeting" if is_greeting else ("writing" if writing_revise else ("refusal" if not search_results else ("writing" if intent == "writing" else "ok")))),
+        "structured_answer": structured_answer.model_dump() if structured_answer else None,
     }
     follow_up_chips = _related_chips(search_results) if (search_results and references) else []
 
@@ -758,6 +807,9 @@ async def chat_stream(request: ChatRequest, user: UserOut = Depends(current_user
             yield "data: [DONE]\n\n"
             return
 
+        if search_results and intent == 'service' and structured_answer is not None:
+            yield f"data: {json.dumps({'type': 'structured_answer', 'data': structured_answer.model_dump()}, ensure_ascii=False)}\n\n"
+
         if not search_results:
             refuse_text = _no_knowledge_response(context_query or request.message, alias_hit) if (alias_hit and alias_hit.get('uncovered')) else _out_of_scope_response()
             yield f"data: {json.dumps({'type': 'error', 'message': refuse_text}, ensure_ascii=False)}\n\n"
@@ -768,7 +820,10 @@ async def chat_stream(request: ChatRequest, user: UserOut = Depends(current_user
             session_store.add_messages(session_id, [user_msg, assistant_msg], user_id=user_id)
             return
 
-        messages = _build_messages(request, session_id, intent, context, user_id=user_id)
+        if structured_answer is not None:
+            messages = _build_service_llm_messages(request, session_id, context, user_id=user_id)
+        else:
+            messages = _build_messages(request, session_id, intent, context, user_id=user_id)
         accumulated: List[str] = []
         primary_provider = request.provider or settings.LLM_PROVIDER
 
@@ -810,10 +865,12 @@ async def chat_stream(request: ChatRequest, user: UserOut = Depends(current_user
         assistant_msg = {"id": _new_message_id(), "role": "assistant", "content": full_text, "references": references, "timestamp": int(time.time() * 1000)}
         if intent == "writing":
             assistant_msg["status"] = "writing"
+        if structured_answer is not None:
+            assistant_msg["structured_answer"] = structured_answer.model_dump()
         assistant_message_id = assistant_msg["id"]
         session_store.add_messages(session_id, [user_msg, assistant_msg], user_id=user_id)
 
-        yield f"data: {json.dumps({'type': 'done', 'session_id': session_id, 'message_id': assistant_message_id, 'references': references, 'follow_up_chips': follow_up_chips, 'status': 'writing' if intent == 'writing' else 'ok'}, ensure_ascii=False)}\n\n"
+        yield f"data: {json.dumps({'type': 'done', 'session_id': session_id, 'message_id': assistant_message_id, 'references': references, 'follow_up_chips': follow_up_chips, 'structured_answer': structured_answer.model_dump() if structured_answer else None, 'status': 'writing' if intent == 'writing' else 'ok'}, ensure_ascii=False)}\n\n"
         yield "data: [DONE]\n\n"
 
     return StreamingResponse(

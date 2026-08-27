@@ -27,6 +27,18 @@ class Reference(BaseModel):
         return {"title": self.title, "source": self.source, "snippet": self.snippet}
 
 
+class StructuredAnswer(BaseModel):
+    """办事指南卡片的结构化直出数据；所有字段可选，缺失由前端隐藏对应区块。"""
+    item_name: Optional[str] = None
+    description: Optional[str] = None
+    required_materials: List[str] = Field(default_factory=list)
+    steps: List[str] = Field(default_factory=list)
+    location: Optional[str] = None
+    time_limit: Optional[str] = None
+    fee: Optional[str] = None
+    consult_phone: Optional[str] = None
+
+
 class ChatRequest(BaseModel):
     message: str
     session_id: Optional[str] = None
@@ -44,6 +56,7 @@ class ChatResponse(BaseModel):
     session_id: Optional[str] = None
     content: str
     references: List[Reference] = Field(default_factory=list)
+    structured_answer: Optional[StructuredAnswer] = None
     retrieval_time_ms: Optional[float] = None
     generation_time_ms: Optional[float] = None
 
@@ -64,6 +77,7 @@ __all__ = [
     'MessageRole',
     'ChatMessage',
     'Reference',
+    'StructuredAnswer',
     'ChatRequest',
     'ChatResponse',
     'SessionCreate',

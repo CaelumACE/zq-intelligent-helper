@@ -1,7 +1,7 @@
 """知识库服务 - RAG 检索"""
 import json
 import re
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from app.core.config import settings
 from app.core.logger import logger
 from app.services.embedding_service import embedding_service
@@ -769,6 +769,34 @@ class KnowledgeService:
             }
             for r in results
         ]
+
+    def get_service_answer(self, results: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """从 service 检索结果还原办事事项的结构化数据，供前端卡片直出。
+
+        仅取第一条 service 结果对应的原始事项；非 service 或找不到原始数据时返回 None，
+        由调用方回退到通用文本模式。
+        """
+        if not results:
+            return None
+        first = next((r for r in results if r.get('type') == 'service'), None)
+        if not first:
+            return None
+        item_id = first.get('id')
+        item = next((x for x in self.documents.get('services', []) if x.get('id') == item_id), None)
+        if not item:
+            return None
+        materials = item.get('required_materials') or []
+        steps = item.get('steps') or []
+        return {
+            'item_name': item.get('item_name') or None,
+            'description': item.get('description') or None,
+            'required_materials': [str(m) for m in materials if str(m).strip()],
+            'steps': [str(x) for x in steps if str(x).strip()],
+            'location': item.get('location') or None,
+            'time_limit': item.get('time_limit') or None,
+            'fee': item.get('fee') or None,
+            'consult_phone': item.get('consult_phone') or None,
+        }
 
 
 knowledge_service = KnowledgeService()
