@@ -19,7 +19,7 @@ from app.core.config import settings
 from app.core.logger import logger
 from sqlalchemy import create_engine, text
 
-_JSON_MESSAGE_FIELDS = ("id", "role", "content", "references", "model", "timestamp", "status")
+_JSON_MESSAGE_FIELDS = ("id", "role", "content", "references", "model", "timestamp", "status", "structured_answer")
 
 
 class SessionStore:
