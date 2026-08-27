@@ -233,7 +233,6 @@ const MessageItem = memo(function MessageItem({
                     <div>
                       <div className="ref-title">{ref.title}</div>
                       <div className="ref-source">来源：{ref.source}</div>
-                      <div className="ref-snippet">{ref.snippet}</div>
                     </div>
                   </div>
                 ))}
