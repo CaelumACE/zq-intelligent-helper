@@ -15,9 +15,15 @@ const escapeHtml = (str: string) =>
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;')
 
-export default function MarkdownContent({ content, plain = false }: { content: string; plain?: boolean }) {
+/** 流式期间按纯文本渲染（保留换行），结束后再做完整 markdown 解析，避免 O(n²) */
+function renderPlainText(str: string): string {
+  return escapeHtml(str)
+    .replace(/\n/g, '<br>')
+}
+
+export default function MarkdownContent({ content, plain = false, streaming = false }: { content: string; plain?: boolean; streaming?: boolean }) {
   const html = useMemo(() => {
-    if (plain) return escapeHtml(content)
+    if (plain || streaming) return renderPlainText(content)
     const raw = marked.parse(content, { async: false }) as string
     const cited = raw.replace(/\[(\d+)\]/g, (_, n) => `<sup class="cite">${n}</sup>`)
     return DOMPurify.sanitize(cited, {
@@ -26,7 +32,7 @@ export default function MarkdownContent({ content, plain = false }: { content: s
       ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto):|[^a-z]|[a-z+.-]+(?:[^a-z+.-:]|$))/i,
       FORBID_TAGS: ['script', 'style', 'iframe', 'object', 'embed', 'form', 'input'],
     })
-  }, [content, plain])
+  }, [content, plain, streaming])
 
   return <div className="md-body" dangerouslySetInnerHTML={{ __html: html }} />
 }

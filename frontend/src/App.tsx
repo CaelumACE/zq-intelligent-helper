@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import Sidebar from './components/Sidebar'
 import Header from './components/Header'
 import ChatInput from './components/ChatInput'
@@ -380,6 +380,18 @@ function App() {
     setIsStreaming(false)
   }
 
+  // 用ref持有最新的handleSendMessage，使回调引用稳定
+  const sendMessageRef = useRef(handleSendMessage)
+  sendMessageRef.current = handleSendMessage
+
+  const handleRegenerate = useCallback((content: string) => {
+    sendMessageRef.current(content, undefined, true)
+  }, [])
+
+  const handleFollowUp = useCallback((prompt: string) => {
+    sendMessageRef.current(prompt, undefined, true)
+  }, [])
+
   const normalizeMessages = (raw: Message[], sessionId: string): Message[] => {
     return (raw || []).map((m, i) => ({
       ...m,
@@ -522,8 +534,8 @@ function App() {
                   isStreaming={isStreaming}
                   currentSessionId={currentSessionId}
                   onStop={handleStop}
-                  onRegenerate={(content) => handleSendMessage(content, undefined, true)}
-                  onFollowUp={(prompt) => handleSendMessage(prompt, undefined, true)}
+                  onRegenerate={handleRegenerate}
+                  onFollowUp={handleFollowUp}
                 />
               )}
             </div>

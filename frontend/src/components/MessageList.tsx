@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { memo, useState, useMemo } from 'react'
 import type { Message } from '../types'
 import { copyText } from '../utils/clipboard'
 import { pickFollowUpChips, isRefusalReply } from '../utils/followUpChips'
@@ -20,7 +20,9 @@ interface MessageListProps {
   onFollowUp?: (prompt: string) => void
 }
 
-function MessageItem({
+const EMPTY_ARRAY: Message[] = []
+
+const MessageItem = memo(function MessageItem({
   message,
   isLatest,
   streaming = false,
@@ -136,7 +138,7 @@ function MessageItem({
       <div className="msg-avatar">{isUser ? '我' : '政'}</div>
       <div className="msg-body">
         <div className={`msg-bubble${isWriting ? ' writing-doc' : ''}`}>
-          <MarkdownContent content={shownContent} />
+          <MarkdownContent content={shownContent} streaming={streaming} />
           {isLong && !expanded && (
             <button className="collapse-toggle" onClick={() => setExpanded(true)}>展开全文</button>
           )}
@@ -242,7 +244,7 @@ function MessageItem({
       </div>
     </div>
   )
-}
+})
 
 export default function MessageList({ messages, isLoading, isStreaming = false, currentSessionId, onStop, onRegenerate, onFollowUp }: MessageListProps) {
   const active = isLoading || isStreaming
@@ -256,6 +258,8 @@ export default function MessageList({ messages, isLoading, isStreaming = false, 
 
   const streamingLatestId = isStreaming && !isLoading && latestAiId != null ? latestAiId : null
 
+  const stableMessages = useMemo(() => messages, [messages])
+
   return (
     <div className="msg-list">
       {messages.map((msg) => (
@@ -267,7 +271,7 @@ export default function MessageList({ messages, isLoading, isStreaming = false, 
           sessionId={currentSessionId}
           onRegenerate={onRegenerate}
           onFollowUp={onFollowUp}
-          allMessages={messages}
+          allMessages={msg.id === latestAiId ? stableMessages : EMPTY_ARRAY}
         />
       ))}
       {isLoading && (
