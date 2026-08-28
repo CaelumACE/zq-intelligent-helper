@@ -204,13 +204,25 @@ def _build_service_llm_messages(request: ChatRequest, session_id: str, structure
 
 
 def _build_writing_message(request: ChatRequest) -> str:
-    """把公文写作面板结构化参数还原为完整写作指令。"""
-    doc_type = (request.doc_type or "").strip() or "通知"
+    """把公文写作面板结构化参数还原为完整写作指令。
+
+    两种入口：
+    1. 对话栏自然语言（如"帮我写一份国庆放假通知"）：结构化字段为空，
+       直接透传用户原始 message，不得丢弃。
+    2. 公文写作抽屉面板：doc_type/title/body 等字段有值，按面板参数拼装。
+    """
+    doc_type = (request.doc_type or "").strip()
     title = (request.title or "").strip()
     body = (request.body or "").strip()
     to = (request.to or "").strip()
     sign = (request.sign or "").strip()
 
+    # 面板字段全部为空 → 对话栏入口，透传用户原始消息
+    if not any([doc_type, title, body, to, sign]):
+        return request.message
+
+    # 面板入口：按结构化参数拼装
+    doc_type = doc_type or "通知"
     parts = [f"请帮我撰写一份{doc_type}。"]
     if title:
         parts.append(f"标题：{title}")
