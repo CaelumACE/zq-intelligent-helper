@@ -104,7 +104,8 @@ async def toggle_item(item_id: int, user=Depends(current_user)):
 @router.post("/knowledge/upload")
 async def upload_and_embed(file: UploadFile = File(...), user=Depends(current_user)):
     _require_admin(user)
-    if file.size > 10 * 1024 * 1024:
+    max_bytes = 10 * 1024 * 1024
+    if file.size and file.size > max_bytes:
         raise HTTPException(status_code=413, detail="文件不能超过 10MB")
     title = safe_filename(file.filename or "upload")
     try:
