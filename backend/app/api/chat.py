@@ -905,7 +905,7 @@ async def chat_stream(request: ChatRequest, user: UserOut = Depends(current_user
     # 元信息一次性下发
     meta = {
         "session_id": session_id,
-        "intent": "early_service" if (early_service and not search_results) else ("greeting" if is_greeting else ("follow_up" if is_follow_up else intent)),
+        "intent": intent,
         "references": references,
         "hit_count": len(search_results),
         "status": "smalltalk" if is_smalltalk else ("greeting" if is_greeting else ("writing" if writing_revise else ("refusal" if (not search_results and not early_service) else ("writing" if intent == "writing" else "ok")))),
