@@ -7,6 +7,7 @@ import WelcomeScreen from './components/WelcomeScreen'
 import WritingPanel from './components/WritingPanel'
 import GuidePanel from './components/GuidePanel'
 import LoginModal from './components/LoginModal'
+import ErrorBoundary from './components/ErrorBoundary'
 import UserAdmin from './components/UserAdmin'
 import ChangePasswordModal from './components/ChangePasswordModal'
 import ComparePanel from './components/ComparePanel'
@@ -469,6 +470,7 @@ function App() {
   }
 
   return (
+    <ErrorBoundary>
     <div className="app-shell">
       {/* PC sidebar */}
       <div className="hidden md:block h-full">
@@ -595,6 +597,7 @@ function App() {
         )}
       </div>
     </div>
+    </ErrorBoundary>
   )
 }
 

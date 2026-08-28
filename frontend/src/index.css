@@ -806,12 +806,26 @@ body {
   30% { transform: translateY(-6px); opacity: 1; }
 }
 
-/* 消息操作栏 */
+/* Markdown 正文：长表格横向滚动，避免撑破移动端布局 */
+.md-body { overflow-x: auto; }
+.md-body table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 13px; }
+.md-body th, .md-body td { border: 1px solid #e2e8f0; padding: 6px 10px; text-align: left; vertical-align: top; }
+.md-body th { background: rgba(12, 74, 110, 0.06); font-weight: 600; }
+
+/* 消息操作栏：默认隐藏，悬停/聚焦/触屏才显示，降低视觉噪音 */
 .msg-actions {
   display: flex;
   gap: 4px;
   margin-top: 8px;
   flex-wrap: wrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+.msg-item:hover .msg-actions,
+.msg-item:focus-within .msg-actions { opacity: 1; pointer-events: auto; }
+@media (hover: none) {
+  .msg-actions { opacity: 1; pointer-events: auto; }
 }
 .msg-item.user .msg-actions { justify-content: flex-end; }
 .msg-action-btn {
@@ -1540,3 +1554,49 @@ body {
 .drawer-overlay {
   display: none !important;
 }
+
+/* ========== 全局错误边界（避免整页白屏） ========== */
+.error-boundary {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--bg, #f5f7fa);
+}
+.error-boundary-card {
+  max-width: 440px;
+  width: 100%;
+  background: #fff;
+  border-radius: 14px;
+  padding: 36px 32px;
+  text-align: center;
+  box-shadow: 0 10px 30px rgba(12, 74, 110, 0.12);
+}
+.error-boundary-icon { font-size: 44px; margin-bottom: 12px; }
+.error-boundary-card h2 { margin: 0 0 10px; font-size: 18px; color: var(--text-primary, #1f2937); }
+.error-boundary-card p { margin: 0 0 16px; font-size: 13px; color: var(--text-secondary, #64748b); line-height: 1.6; }
+.error-boundary-detail {
+  max-height: 120px;
+  overflow: auto;
+  text-align: left;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: #b91c1c;
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin-bottom: 16px;
+}
+.error-boundary-btn {
+  padding: 9px 20px;
+  border: none;
+  border-radius: 8px;
+  background: #0c4a6e;
+  color: #fff;
+  font-size: 14px;
+  cursor: pointer;
+}
+.error-boundary-btn:hover { background: #0a3d5c; }

@@ -65,10 +65,11 @@ function useThrottledContent(content: string, streaming: boolean, interval = 80)
 export default function MarkdownContent({ content, plain = false, streaming = false }: { content: string; plain?: boolean; streaming?: boolean }) {
   const displayContent = useThrottledContent(content, streaming)
 
+  // 依赖只用节流后的 displayContent：非流式时 displayContent 已同步等于 content，
+  // 流式时每 80ms 才变一次。若把 content 放进依赖，每个 delta 都会触发重算，节流失效。
   const html = useMemo(() => {
-    if (plain) return renderMarkdown(content)
     return renderMarkdown(displayContent)
-  }, [displayContent, plain, content])
+  }, [displayContent, plain])
 
   return <div className="md-body" dangerouslySetInnerHTML={{ __html: html }} />
 }
