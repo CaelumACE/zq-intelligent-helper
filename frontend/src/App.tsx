@@ -255,7 +255,7 @@ function App() {
           buffer = buffer.slice(boundary + 2)
 
           const lines = rawEvent.split('\n')
-          let evt: { type?: string; content?: string; session_id?: string; references?: Reference[]; follow_up_chips?: string[]; status?: Message['status']; structured_answer?: StructuredAnswer; message?: string; message_id?: string }
+          let evt: { type?: string; content?: string; session_id?: string; references?: Reference[]; follow_up_chips?: string[]; status?: Message['status']; structured_answer?: StructuredAnswer; data?: StructuredAnswer; message?: string; message_id?: string }
           let payload = ''
           for (const line of lines) {
             if (line.startsWith('data: ')) {
@@ -281,8 +281,8 @@ function App() {
             if (evt.follow_up_chips) followUpChips = evt.follow_up_chips
             if (evt.status) statusRef.current = evt.status
             if (evt.structured_answer) structuredAnswer = evt.structured_answer
-          } else if (evt.type === 'structured_answer' && evt.structured_answer) {
-            structuredAnswer = evt.structured_answer
+          } else if (evt.type === 'structured_answer' && evt.data) {
+            structuredAnswer = evt.data
           } else if (evt.type === 'done') {
             if (evt.status) statusRef.current = evt.status
             if (evt.follow_up_chips) followUpChips = evt.follow_up_chips
