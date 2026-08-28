@@ -713,6 +713,9 @@ body {
   margin: 0 auto;
   width: 100%;
   padding: 0 24px;
+  /* 视口外消息跳过渲染，长会话性能优化；DOM/状态保留，滚回即恢复 */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 120px;
 }
 .msg-item.user { flex-direction: row-reverse; }
 .msg-avatar {

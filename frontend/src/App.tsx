@@ -12,6 +12,7 @@ import UserAdmin from './components/UserAdmin'
 import ChangePasswordModal from './components/ChangePasswordModal'
 import ComparePanel from './components/ComparePanel'
 import { apiFetch, setUnauthorizedHandler } from './utils/api'
+import { isRetryableError } from './utils/retry'
 import type { AuthUser, Message, Conversation, Reference, ModelProvider, WritingRequest, StructuredAnswer } from './types'
 import './App.css'
 
@@ -208,23 +209,48 @@ function App() {
       }
       activeRequestRef.current = controller
 
-      const response = await apiFetch(`${API_BASE}/chat/stream`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: controller.signal,
-        body: JSON.stringify({
-          message: content,
-          session_id: sessionId || undefined,
-          history,
-          provider: model,
-          follow_up: followUp || undefined,
-          doc_type: writing?.docType,
-          title: writing?.title,
-          to: writing?.to,
-          body: writing?.body,
-          sign: writing?.sign,
-        }),
-      })
+      // SSE 连接建立前的网络重试：最多重试 1 次（指数退避 800ms）
+      // 一旦连接建立并开始接收 delta，后续中断不再重试（避免重复输出）
+      let response: Response
+      let streamAttempt = 0
+      while (true) {
+        try {
+          response = await fetch(`${API_BASE}/chat/stream`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+            signal: controller.signal,
+            body: JSON.stringify({
+              message: content,
+              session_id: sessionId || undefined,
+              history,
+              provider: model,
+              follow_up: followUp || undefined,
+              doc_type: writing?.docType,
+              title: writing?.title,
+              to: writing?.to,
+              body: writing?.body,
+              sign: writing?.sign,
+            }),
+          })
+          break
+        } catch (connErr) {
+          if ((connErr as Error)?.name === 'AbortError') throw connErr
+          if (streamAttempt >= 1 || !isRetryableError(connErr)) throw connErr
+          streamAttempt++
+          console.warn(`[chat] 连接失败，第 ${streamAttempt} 次重试...`, connErr)
+          await new Promise<void>((resolve, reject) => {
+            const ctrl = controller!
+            const t = setTimeout(resolve, 800)
+            ctrl.signal.addEventListener('abort', () => {
+              clearTimeout(t)
+              reject(new DOMException('Aborted', 'AbortError'))
+            }, { once: true })
+          })
+        }
+      }
 
       if (!response.ok || !response.body) {
         throw new Error(`HTTP ${response.status}`)
