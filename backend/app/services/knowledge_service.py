@@ -61,6 +61,9 @@ CATEGORY_KEYWORDS = {
 class KnowledgeService:
     """知识库检索服务"""
     SEMANTIC_WEIGHT = 12.0
+    # 检索结果的绝对分数下限：低于该原始分一律丢弃，顶层相对阈值只能继续收紧。
+    # 取值参考 _absolute_threshold 的历史表现，避免低质召回混入 prompt。
+    ABSOLUTE_SCORE_FLOOR = 8.0
 
     def __init__(self):
         self.documents = []
@@ -439,7 +442,7 @@ class KnowledgeService:
             return []
         top_score = max(r['score'] for r in results)
         absolute_threshold = self._absolute_threshold(query_lower, top_score)
-        min_score = max(absolute_threshold, top_score * 0.35)
+        min_score = max(absolute_threshold, top_score * 0.35, self.ABSOLUTE_SCORE_FLOOR if top_score >= self.ABSOLUTE_SCORE_FLOOR else 0.0)
         # 先用原始分数过滤，再交给 rerank 排序。
         # 原来的顺序是把 rerank 后分数再拿去算门槛，rerank 会把所有分数抬到 ~100，
         # 导致大量正常简单问题（如“生育保险是什么”）被门槛误杀。
@@ -502,7 +505,7 @@ class KnowledgeService:
             return []
         top_score = max(r['score'] for r in results)
         absolute_threshold = self._absolute_threshold(query_lower, top_score)
-        min_score = max(absolute_threshold, top_score * 0.35)
+        min_score = max(absolute_threshold, top_score * 0.35, self.ABSOLUTE_SCORE_FLOOR if top_score >= self.ABSOLUTE_SCORE_FLOOR else 0.0)
         results = [r for r in results if r['score'] >= min_score]
         if not results:
             return []

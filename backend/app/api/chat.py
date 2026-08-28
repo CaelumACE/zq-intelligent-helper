@@ -40,6 +40,17 @@ SYSTEM_PROMPT = """你是政企智能助手，为政府机关和企事业单位�
 4. 不确定、不完整或来源缺失时，优先建议用户通过官方渠道（12333/12345或当地政府部门）核实
 5. 保持中立客观，不发表未经验证的信息"""
 
+def _llm_params_for_intent(intent: str | None) -> dict:
+    """按意图分档 LLM 采样参数：政务 QA/办事求低幻觉，公文写作/闲聊允许更自然。"""
+    writing_like = intent in ("writing", "writing_revise")
+    smalltalk = intent in ("smalltalk", "greeting")
+    if smalltalk:
+        return {"temperature": 0.7, "max_tokens": 1024}
+    if writing_like:
+        return {"temperature": 0.5, "max_tokens": 4096}
+    return {"temperature": 0.1, "max_tokens": 4096}
+
+
 WRITING_PROMPT_EXTRA = """
 当前用户需要撰写公文。请严格依据参考资料中的公文格式与写作规范生成，结构完整、用语规范。
 如参考资料不足以完成该文种，请说明需要用户补充的信息，不要臆造格式。
@@ -402,11 +413,19 @@ def _resolve_session_id(request: ChatRequest, user_id=None) -> str:
 
 
 def _history_messages(request: ChatRequest, session_id: str, user_id=None) -> List[dict]:
-    """优先取服务端会话历史，新会话则回退请求携带的 history。"""
+    """优先取服务端会话历史，新会话则回退请求携带的 history。
+
+    安全：服务端只信任 user/assistant 角色，客户端提交的 system 一律丢弃，
+    防止注入 system prompt 绕过“严禁臆造”护栏。
+    """
     history = session_store.get_history(session_id, user_id=user_id)
-    if history:
-        return [m if isinstance(m, dict) else (m.to_dict() if hasattr(m, 'to_dict') else m) for m in history]
-    return [m.to_dict() if isinstance(m, ChatMessage) else m for m in (request.history or [])]
+
+    def _to_dict(m):
+        d = m if isinstance(m, dict) else (m.to_dict() if hasattr(m, 'to_dict') else m)
+        return d if isinstance(d, dict) else {}
+
+    messages = [_to_dict(m) for m in history] if history else [_to_dict(m) for m in (request.history or [])]
+    return [m for m in messages if m.get('role') in ('user', 'assistant')]
 
 
 def _previous_user_query(request: ChatRequest, session_id: str, user_id=None) -> str:
@@ -554,7 +573,7 @@ async def chat(request: ChatRequest, user: UserOut = Depends(current_user)):
             smalltalk_msgs = _build_smalltalk_messages(request.message, history)
             generation_start = time.time()
             try:
-                llm_response = await llm_service.chat(smalltalk_msgs, stream=False)
+                llm_response = await llm_service.chat(smalltalk_msgs, stream=False, **_llm_params_for_intent('smalltalk'))
                 content = _extract_content(llm_response)
             except Exception as e:
                 logger.warning(f"smalltalk LLM失败: {e}")
@@ -579,13 +598,14 @@ async def chat(request: ChatRequest, user: UserOut = Depends(current_user)):
             )
             generation_start = time.time()
             try:
-                llm_response = await llm_service.chat(messages, stream=False)
+                llm_response = await llm_service.chat(messages, stream=False, **_llm_params_for_intent(intent))
                 content = _extract_content(llm_response)
             except Exception as primary_error:
                 logger.warning(f"公文修改主通道失败，尝试兜底: {primary_error}")
                 try:
                     llm_response = await llm_service.chat(
                         messages, stream=False, provider=settings.LLM_FALLBACK_PROVIDER,
+                        **_llm_params_for_intent('writing_revise'),
                     )
                     content = _extract_content(llm_response)
                 except Exception as fallback_error:
@@ -641,7 +661,7 @@ async def chat(request: ChatRequest, user: UserOut = Depends(current_user)):
             # 3. 主通道 + 失败时切 DeepSeek 兜底
             generation_start = time.time()
             try:
-                llm_response = await llm_service.chat(messages, stream=False)
+                llm_response = await llm_service.chat(messages, stream=False, **_llm_params_for_intent(intent))
                 content = _extract_content(llm_response)
             except Exception as primary_error:
                 logger.warning(f"主通道 LLM 失败，尝试兜底通道: {primary_error}")
@@ -649,6 +669,7 @@ async def chat(request: ChatRequest, user: UserOut = Depends(current_user)):
                     llm_response = await llm_service.chat(
                         messages, stream=False,
                         provider=settings.LLM_FALLBACK_PROVIDER,
+                        **_llm_params_for_intent(intent),
                     )
                     content = _extract_content(llm_response)
                 except Exception as fallback_error:
@@ -758,7 +779,7 @@ async def chat_stream(request: ChatRequest, user: UserOut = Depends(current_user
             st_primary = request.provider or settings.LLM_PROVIDER
             st_status = {'ok': False}
             try:
-                async for delta in await llm_service.chat(smalltalk_msgs, stream=True, provider=st_primary):
+                async for delta in await llm_service.chat(smalltalk_msgs, stream=True, provider=st_primary, **_llm_params_for_intent('smalltalk')):
                     if delta:
                         accumulated_st.append(delta)
                         yield f"data: {json.dumps({'type': 'delta', 'content': delta}, ensure_ascii=False)}\n\n"
@@ -768,7 +789,7 @@ async def chat_stream(request: ChatRequest, user: UserOut = Depends(current_user
             if not st_status['ok'] or not accumulated_st:
                 try:
                     fb = settings.LLM_FALLBACK_PROVIDER
-                    async for delta in await llm_service.chat(smalltalk_msgs, stream=True, provider=fb):
+                    async for delta in await llm_service.chat(smalltalk_msgs, stream=True, provider=fb, **_llm_params_for_intent('smalltalk')):
                         if delta:
                             accumulated_st.append(delta)
                             yield f"data: {json.dumps({'type': 'delta', 'content': delta}, ensure_ascii=False)}\n\n"
@@ -795,7 +816,7 @@ async def chat_stream(request: ChatRequest, user: UserOut = Depends(current_user
             accumulated_rev: List[str] = []
             rev_status = {"ok": False}
             try:
-                async for delta in await llm_service.chat(messages, stream=True, provider=(request.provider or settings.LLM_PROVIDER)):
+                async for delta in await llm_service.chat(messages, stream=True, provider=(request.provider or settings.LLM_PROVIDER), **_llm_params_for_intent('writing_revise')):
                     if delta:
                         accumulated_rev.append(delta)
                         yield f"data: {json.dumps({'type': 'delta', 'content': delta}, ensure_ascii=False)}\n\n"
@@ -804,7 +825,7 @@ async def chat_stream(request: ChatRequest, user: UserOut = Depends(current_user
                 logger.warning(f"公文修改流式失败: {e}")
             if not rev_status["ok"] or not accumulated_rev:
                 try:
-                    async for delta in await llm_service.chat(messages, stream=True, provider=settings.LLM_FALLBACK_PROVIDER):
+                    async for delta in await llm_service.chat(messages, stream=True, provider=settings.LLM_FALLBACK_PROVIDER, **_llm_params_for_intent('writing_revise')):
                         if delta:
                             accumulated_rev.append(delta)
                             yield f"data: {json.dumps({'type': 'delta', 'content': delta}, ensure_ascii=False)}\n\n"
@@ -846,7 +867,7 @@ async def chat_stream(request: ChatRequest, user: UserOut = Depends(current_user
         # 主通道流式生成
         stream_ok = False
         try:
-            async for delta in await llm_service.chat(messages, stream=True, provider=primary_provider):
+            async for delta in await llm_service.chat(messages, stream=True, provider=primary_provider, **_llm_params_for_intent(intent)):
                 if delta:
                     accumulated.append(delta)
                     yield f"data: {json.dumps({'type': 'delta', 'content': delta}, ensure_ascii=False)}\n\n"
@@ -863,7 +884,7 @@ async def chat_stream(request: ChatRequest, user: UserOut = Depends(current_user
                 fallback_provider = settings.LLM_FALLBACK_PROVIDER
             accumulated.clear()
             try:
-                async for delta in await llm_service.chat(messages, stream=True, provider=fallback_provider):
+                async for delta in await llm_service.chat(messages, stream=True, provider=fallback_provider, **_llm_params_for_intent(intent)):
                     if delta:
                         accumulated.append(delta)
                         yield f"data: {json.dumps({'type': 'delta', 'content': delta}, ensure_ascii=False)}\n\n"

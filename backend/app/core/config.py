@@ -35,10 +35,13 @@ class Settings:
     # 数据库
     DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///./data/gov_assistant.db')
 
-    # JWT：不再提供硬编码默认密钥；未配置时随机生成并告警，重启后旧 token 会失效。
-    JWT_SECRET = _env("JWT_SECRET") or secrets.token_hex(32)
-    if not _env("JWT_SECRET"):
-        logger.warning("JWT_SECRET 未配置，本次启动已随机生成，重启后所有登录态将失效，请写入 .env")
+    # JWT：多 worker 下若让各进程各自随机生成密钥，同一 token 会随机验签失败。
+    # 因此未显式配置时直接拒绝启动，与 SUPER_ADMIN_PASSWORD 采取相同的 fail-fast 策略。
+    JWT_SECRET = _env("JWT_SECRET")
+    if not JWT_SECRET:
+        raise RuntimeError(
+            "JWT_SECRET 未配置，服务拒绝启动。请复制 .env.example 并填入随机强密钥。"
+        )
     JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
     JWT_EXPIRE_HOURS = int(os.getenv("JWT_EXPIRE_HOURS", "72"))
 

@@ -14,6 +14,9 @@ from app.services.kb_admin_store import get_item
 
 router = APIRouter()
 
+# 与 kb_admin.py 上传阈值保持一致，避免同一后端出现两种限制
+_MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+
 _RESULTS: dict[str, dict] = {}
 
 
@@ -58,8 +61,8 @@ async def compare_upload(
     doc_b: UploadFile = File(...),
     user=Depends(current_user),
 ):
-    if doc_a.size > 5 * 1024 * 1024 or doc_b.size > 5 * 1024 * 1024:
-        raise HTTPException(status_code=413, detail="文件不能超过 5MB")
+    if (doc_a.size and doc_a.size > _MAX_UPLOAD_BYTES) or (doc_b.size and doc_b.size > _MAX_UPLOAD_BYTES):
+        raise HTTPException(status_code=413, detail="文件不能超过 10MB")
     a_text = extract_text(doc_a.filename or "", await doc_a.read())
     b_text = extract_text(doc_b.filename or "", await doc_b.read())
     if not a_text.strip() and not b_text.strip():

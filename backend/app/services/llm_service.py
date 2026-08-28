@@ -36,17 +36,21 @@ class LLMService:
         """多 worker 下为每个 AsyncClient 设置保守连接池上限，避免连接数爆炸。"""
         return httpx.Limits(max_connections=20, max_keepalive_connections=10)
 
-    async def chat(self, messages: list, stream: bool = False, provider: str | None = None) -> dict | AsyncGenerator:
-        """调用大模型对话接口。provider 可临时覆盖当前实例的 provider。"""
+    async def chat(self, messages: list, stream: bool = False, provider: str | None = None, temperature: float | None = None, max_tokens: int | None = None) -> dict | AsyncGenerator:
+        """调用大模型对话接口。provider 可临时覆盖当前实例的 provider。
+
+        temperature / max_tokens 可选项：QA / 办事等低幻觉场景应传低温度，
+        公文写作与闲聊可传稍高温度，按意图分档。
+        """
         current = provider or self.provider
         config = self._config_for(current)
         if current == 'minimax':
-            return await self._call_minimax(messages, stream, config)
+            return await self._call_minimax(messages, stream, config, temperature, max_tokens)
         if current == 'deepseek':
-            return await self._call_deepseek(messages, stream, config)
+            return await self._call_deepseek(messages, stream, config, temperature, max_tokens)
         raise ValueError(f"Unknown provider: {current}")
 
-    async def _call_minimax(self, messages: list, stream: bool, config: dict) -> dict | AsyncGenerator:
+    async def _call_minimax(self, messages: list, stream: bool, config: dict, temperature: float | None = None, max_tokens: int | None = None) -> dict | AsyncGenerator:
         url = f"{config['base_url']}/text/chatcompletion_v2"
         headers = {
             "Authorization": f"Bearer {config['api_key']}",
@@ -56,8 +60,8 @@ class LLMService:
             "model": config['model'],
             "messages": messages,
             "stream": stream,
-            "temperature": 0.7,
-            "max_tokens": 2048,
+            "temperature": 0.7 if temperature is None else max(0.0, min(float(temperature), 2.0)),
+            "max_tokens": 2048 if max_tokens is None else int(max_tokens),
         }
         if stream:
             return self._stream_response(url, headers, payload)
@@ -66,7 +70,7 @@ class LLMService:
             response.raise_for_status()
             return response.json()
 
-    async def _call_deepseek(self, messages: list, stream: bool, config: dict) -> dict | AsyncGenerator:
+    async def _call_deepseek(self, messages: list, stream: bool, config: dict, temperature: float | None = None, max_tokens: int | None = None) -> dict | AsyncGenerator:
         url = f"{config['base_url']}/chat/completions"
         headers = {
             "Authorization": f"Bearer {config['api_key']}",
@@ -76,8 +80,8 @@ class LLMService:
             "model": config['model'],
             "messages": messages,
             "stream": stream,
-            "temperature": 0.7,
-            "max_tokens": 2048,
+            "temperature": 0.7 if temperature is None else max(0.0, min(float(temperature), 2.0)),
+            "max_tokens": 2048 if max_tokens is None else int(max_tokens),
         }
         if stream:
             return self._stream_response(url, headers, payload)
@@ -114,7 +118,7 @@ class LLMService:
             return ""
         return delta.get("content") or ""
 
-    async def stream_text(self, messages: list, provider: str | None = None) -> AsyncGenerator:
+    async def stream_text(self, messages: list, provider: str | None = None, temperature: float | None = None, max_tokens: int | None = None) -> AsyncGenerator:
         """便捷流式接口：直接产出文本片段"""
-        async for delta in await self.chat(messages, stream=True, provider=provider):
+        async for delta in await self.chat(messages, stream=True, provider=provider, temperature=temperature, max_tokens=max_tokens):
             yield delta

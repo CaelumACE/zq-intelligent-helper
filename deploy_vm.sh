@@ -67,6 +67,12 @@ else
     read -p "PostgreSQL密码 [默认Gov2026]: " PG_PASS
     PG_PASS=${PG_PASS:-Gov2026}
 
+    # JWT_SECRET 与超管密码不再允许省略：未配置时后端会拒绝启动
+    read -p "JWT_SECRET [必填，随机强密钥]: " JWT_SECRET
+    if [ -z "$JWT_SECRET" ]; then echo "❌ JWT_SECRET不能为空"; exit 1; fi
+    read -p "超级管理员初始密码 [必填，至少8位]: " SUPER_ADMIN_PASSWORD
+    if [ ${#SUPER_ADMIN_PASSWORD} -lt 8 ]; then echo "❌ 超级管理员初始密码至少8位"; exit 1; fi
+
     cat > .env << ENVEOF
 # ===== 大模型配置 =====
 LLM_PROVIDER=deepseek
@@ -90,10 +96,10 @@ RERANK_BASE_URL=
 RERANK_API_KEY=
 
 # ===== 安全密钥 =====
-JWT_SECRET=
+JWT_SECRET=$JWT_SECRET
 ADMIN_PASSWORD=
 SUPER_ADMIN_USERNAME=super_admin
-SUPER_ADMIN_PASSWORD=
+SUPER_ADMIN_PASSWORD=$SUPER_ADMIN_PASSWORD
 
 # ===== 数据库配置 =====
 POSTGRES_PASSWORD=$PG_PASS
