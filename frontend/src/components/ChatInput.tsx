@@ -18,7 +18,10 @@ const MODEL_LABEL: Record<ModelProvider, string> = {
 /** 仅桌面端（有精确指针/鼠标）返回 true，手机/平板等触摸设备返回 false */
 function isDesktop(): boolean {
   if (typeof window === 'undefined') return false
-  return window.matchMedia('(pointer: fine)').matches
+  // 双重判断：有鼠标指针 + 可hover，比单 pointer:fine 更可靠
+  const finePointer = window.matchMedia('(pointer: fine)').matches
+  const canHover = window.matchMedia('(hover: hover)').matches
+  return finePointer && canHover
 }
 
 export default function ChatInput({ onSend, onStop, disabled = false, model, onModelChange }: ChatInputProps) {

@@ -14,6 +14,11 @@ export function setUnauthorizedHandler(handler: (() => void) | null) {
   unauthorizedHandler = handler
 }
 
+/** 供SSE等非apiFetch场景手动触发401处理（清token+弹登录） */
+export function handleUnauthorized() {
+  if (unauthorizedHandler) unauthorizedHandler()
+}
+
 export interface ApiFetchOptions extends RequestInit {
   /** 重试配置。设为 false 关闭重试；默认对网络错误/502/503/504 重试最多 2 次 */
   retry?: RetryOptions | false

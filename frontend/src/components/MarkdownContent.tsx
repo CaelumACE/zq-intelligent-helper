@@ -12,8 +12,21 @@ function citeReplacer(_: string, n: string): string {
   return `<sup class="cite">${n}</sup>`
 }
 
+/**
+ * LLM 有时会把整段 Markdown 包在 ```markdown ... ``` 围栏里，
+ * 导致 marked 将其渲染为 <pre><code> 代码块而非正常标题/列表。
+ * 检测到整段内容被同一个 markdown 代码块包裹时，剥离围栏重新解析。
+ */
+function unwrapMarkdownFence(text: string): string {
+  const trimmed = text.trim()
+  const fenceMatch = trimmed.match(/^```(?:markdown|md)?\s*\n([\s\S]*?)\n?```\s*$/)
+  if (fenceMatch) return fenceMatch[1]
+  return text
+}
+
 function renderMarkdown(content: string): string {
-  const raw = marked.parse(content, { async: false }) as string
+  const unwrapped = unwrapMarkdownFence(content)
+  const raw = marked.parse(unwrapped, { async: false }) as string
   const cited = raw.replace(/\[(\d+)\]/g, citeReplacer)
   return DOMPurify.sanitize(cited, {
     ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 's', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'code', 'pre', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'hr', 'sup', 'span', 'a'],

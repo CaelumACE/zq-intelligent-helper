@@ -11,7 +11,7 @@ import ErrorBoundary from './components/ErrorBoundary'
 import UserAdmin from './components/UserAdmin'
 import ChangePasswordModal from './components/ChangePasswordModal'
 import ComparePanel from './components/ComparePanel'
-import { apiFetch, setUnauthorizedHandler } from './utils/api'
+import { apiFetch, setUnauthorizedHandler, handleUnauthorized } from './utils/api'
 import { isRetryableError } from './utils/retry'
 import type { AuthUser, Message, Conversation, Reference, ModelProvider, WritingRequest, StructuredAnswer } from './types'
 import './App.css'
@@ -252,6 +252,10 @@ function App() {
         }
       }
 
+      if (response.status === 401) {
+        handleUnauthorized()
+        return
+      }
       if (!response.ok || !response.body) {
         throw new Error(`HTTP ${response.status}`)
       }
