@@ -1,0 +1,31 @@
+# 构建上下文裁剪：避免把 193MB 的 node_modules、本地虚拟环境、
+# 数据库/检索缓存及 .git 打进 docker build，减少构建期间内存峰值。
+.git
+.gitignore
+.github
+.env
+.env.*
+*.md
+
+**/__pycache__
+**/*.pyc
+.pytest_cache
+.idea
+.vscode
+.DS_Store
+
+frontend/node_modules
+frontend/dist
+
+.venv
+venv
+backend/.venv
+**/.venv
+
+data/*.db
+data/*.sqlite
+data/*.sqlite3
+data/embeddings_cache.json
+data/conversations.json
+data/retrieval_log
+
