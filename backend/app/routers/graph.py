@@ -21,6 +21,15 @@ class GraphQueryRequest(BaseModel):
     def check_depth(cls, v):
         return min(max(int(v), 1), 3)
 
+    @field_validator('entity_hints', 'entity_types')
+    @classmethod
+    def check_entity_lists(cls, v):
+        if v is None:
+            return v
+        # 单次请求限定实体数，避免用超长列表放大全表扫描
+        cleaned = [str(x).strip() for x in v if str(x).strip()]
+        return cleaned[:10]
+
 
 @router.post("/query")
 async def graph_query(body: GraphQueryRequest, user=Depends(current_user)):

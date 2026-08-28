@@ -17,6 +17,7 @@ from app.services.llm_service import LLMService
 from app.services.session_store import session_store
 from app.services.pg_store import pg_store
 from app.services.docx_writer import build_writing_docx
+from app.services.graph_store import graph_store
 from app.services.retrieval_log import log_retrieval
 from app.core.config import settings
 from app.core.logger import logger
@@ -160,6 +161,63 @@ def _style_section(key: str) -> str:
         if isinstance(value, str) and value.strip():
             lines.append(value.strip())
     return "\n".join(lines)
+
+
+_GRAPH_RELEVANT_TYPES = ("service", "department", "process_node", "policy")
+
+
+def _graph_context_for(query: str, intent: str) -> str:
+    """图谱实体关联召回：命中实体后取一层子图作为上下文补充，失败时静默降级为空。
+
+    仅做“补充关系上下文”，不替代检索结果；图谱为空或未命中时返回空串。
+    """
+    try:
+        if not graph_store.stats().get("nodes"):
+            return ""
+    except Exception:
+        return ""
+    entity_types = ["service", "department", "process_node"] if intent == "service" else list(_GRAPH_RELEVANT_TYPES)
+    candidates = [query]
+    try:
+        _, alias_hit = knowledge_service.resolve_alias(query)
+        if alias_hit and alias_hit.get("canonical"):
+            candidates = list(alias_hit["canonical"]) + candidates
+    except Exception:
+        pass
+    roots = []
+    for candidate in candidates:
+        roots = graph_store.find_node(candidate, entity_types=entity_types)
+        if roots:
+            break
+    subgraph = graph_store.get_subgraph([n["name"] for n in roots[:3]], depth=1)
+    if not subgraph.get("nodes"):
+        return ""
+    lines = []
+    seen = set()
+    for n in subgraph["nodes"][:12]:
+        label = f"[{n['entity_type']}] {n['name']}"
+        if label in seen:
+            continue
+        seen.add(label)
+        props = n.get("properties") or {}
+        extra = ""
+        if n["entity_type"] == "service":
+            extra = "；".join(
+                f"{k}:{props[k]}"
+                for k in ("category", "location", "time_limit", "consult_phone")
+                if props.get(k)
+            )
+        elif n["entity_type"] == "policy":
+            doc_no = props.get("document_number") or ""
+            summary = props.get("summary") or ""
+            extra = f"{doc_no}。{summary}" if doc_no or summary else ""
+        if extra:
+            lines.append(f"{label}：{extra}")
+        else:
+            lines.append(label)
+    if not lines:
+        return ""
+    return "【政务知识图谱关联实体】\n" + "\n".join(lines)
 
 
 def _service_context_text(results) -> str:
@@ -649,7 +707,13 @@ async def chat(request: ChatRequest, user: UserOut = Depends(current_user)):
             logger.info(f"拒答（无知识库命中）: {request.message[:40]}")
         else:
             if context is None:
-                context = _service_context_text(search_results) if intent == 'service' else knowledge_service.build_context(context_query, top_k=5)
+                if intent == 'service':
+                    context = _service_context_text(search_results)
+                else:
+                    context = knowledge_service.build_context(context_query, top_k=5)
+                graph_extra = _graph_context_for(context_query, intent)
+                if graph_extra:
+                    context = (context + "\n\n" + graph_extra).strip()
             # 公文写作是生成类任务，引用来源不放大模型生成前的检索命中，避免“写作结果挂检索引用”
             references = [] if intent == 'writing' else knowledge_service.get_references(search_results)
             structured_answer = _build_service_answer(search_results, request.message)
@@ -745,7 +809,13 @@ async def chat_stream(request: ChatRequest, user: UserOut = Depends(current_user
     ))
     # 公文写作/修改是生成类任务，其检索仅用于取写作模板，不向用户展示引用来源
     references = [] if intent in ('writing', 'writing_revise') else knowledge_service.get_references(search_results)
-    context = _service_context_text(search_results) if (search_results and intent == 'service') else (knowledge_service.build_context_from_results(search_results) if search_results else "")
+    if search_results and intent == 'service':
+        context = _service_context_text(search_results)
+    else:
+        context = knowledge_service.build_context_from_results(search_results) if search_results else ""
+    graph_extra = _graph_context_for(context_query, intent)
+    if graph_extra:
+        context = (context + "\n\n" + graph_extra).strip()
     structured_answer = _build_service_answer(search_results, request.message) if search_results else None
 
     # 元信息一次性下发

@@ -27,7 +27,9 @@ async def lifespan(app: FastAPI):
     guide_store.ensure_super_admin_user()
     kb_admin_store.init_kb_db()
     from app.services.graph_store import graph_store
+    from app.services.graph_builder import ensure_populated
     graph_store.ensure_schema()
+    ensure_populated()
     yield
 
 
