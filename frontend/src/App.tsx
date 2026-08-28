@@ -264,6 +264,7 @@ function App() {
       const decoder = new TextDecoder()
       let buffer = ''
       let doneReceived = false
+      let warning: { code: string; message: string } | undefined
 
       const resetIdleTimer = () => {
         if (idleTimer) clearTimeout(idleTimer)
@@ -285,7 +286,7 @@ function App() {
           buffer = buffer.slice(boundary + 2)
 
           const lines = rawEvent.split('\n')
-          let evt: { type?: string; content?: string; session_id?: string; references?: Reference[]; follow_up_chips?: string[]; status?: Message['status']; structured_answer?: StructuredAnswer; data?: StructuredAnswer; message?: string; message_id?: string }
+          let evt: { type?: string; content?: string; session_id?: string; references?: Reference[]; follow_up_chips?: string[]; status?: Message['status']; structured_answer?: StructuredAnswer; data?: StructuredAnswer; message?: string; message_id?: string; code?: string }
           let payload = ''
           for (const line of lines) {
             if (line.startsWith('data: ')) {
@@ -332,6 +333,8 @@ function App() {
               setIsLoading(false)
             }
             appendAssistant(assistantId, evt.message, undefined, true)
+          } else if (evt.type === 'warning' && evt.message) {
+            warning = { code: evt.code || 'warning', message: evt.message }
           }
         }
 
@@ -343,7 +346,7 @@ function App() {
       if (started) {
         setMessages(prev => prev.map(m => {
           if (m.id === assistantId) {
-            return { ...m, references: references ?? m.references, followUpChips: followUpChips ?? m.followUpChips, structuredAnswer: structuredAnswer ?? m.structuredAnswer, model, status: statusRef.current }
+            return { ...m, references: references ?? m.references, followUpChips: followUpChips ?? m.followUpChips, structuredAnswer: structuredAnswer ?? m.structuredAnswer, model, status: statusRef.current, warning: warning ?? m.warning }
           }
           return m
         }))

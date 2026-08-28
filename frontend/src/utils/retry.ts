@@ -1,6 +1,7 @@
 /**
  * 网络请求重试封装
- * - 仅对网络错误（TypeError/failed）和 502/503/504 重试
+ * - 默认仅对 GET 请求的网络错误（TypeError/failed）和 502/503/504 重试
+ * - POST/PUT/DELETE/PATCH 等写操作默认不重试（避免重复提交副作用）
  * - 4xx 不重试（业务错误）
  * - SSE 流一旦开始接收数据，调用方应停止重试
  */
@@ -8,6 +9,9 @@
 const RETRY_STATUS = new Set([502, 503, 504])
 const MAX_RETRIES = 2
 const BASE_DELAY = 500
+
+/** 安全可重试的 HTTP 方法（幂等） */
+const IDEMPOTENT_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
 
 export function isRetryableError(err: unknown): boolean {
   if (!err) return false
@@ -21,6 +25,15 @@ export function isRetryableError(err: unknown): boolean {
 
 export function isRetryableStatus(status: number): boolean {
   return RETRY_STATUS.has(status)
+}
+
+/**
+ * 判断给定 HTTP method 是否默认允许重试。
+ * 只有幂等方法（GET/HEAD/OPTIONS）默认重试；写操作需显式开启。
+ */
+export function isMethodIdempotent(method?: string): boolean {
+  if (!method) return true // fetch 默认 GET
+  return IDEMPOTENT_METHODS.has(method.toUpperCase())
 }
 
 function delay(ms: number, signal?: AbortSignal | null): Promise<void> {
@@ -41,20 +54,34 @@ export interface RetryOptions {
   maxRetries?: number
   baseDelay?: number
   signal?: AbortSignal
+  /**
+   * 是否强制重试（忽略 method 判断）。
+   * 默认 false：仅 GET/HEAD/OPTIONS 重试。
+   * 写操作只有在调用方确认具备幂等键/可安全重放时才应设为 true。
+   */
+  forceRetry?: boolean
   /** 每次重试前回调，可用于提示用户 */
   onRetry?: (attempt: number, error: unknown) => void
 }
 
 /**
  * 带重试的 fetch。
- * 仅在「尚未获得 response」或「response 状态为 502/503/504」时重试；
- * 一旦拿到 2xx/4xx 等正常响应就返回，由调用方处理。
+ * 默认仅对幂等方法（GET）在「尚未获得 response」或「response 状态为 502/503/504」时重试；
+ * 写操作默认不重试。一旦拿到 2xx/4xx 等正常响应就返回，由调用方处理。
  */
 export async function fetchWithRetry(
   input: RequestInfo | URL,
   init: RequestInit = {},
   options: RetryOptions = {}
 ): Promise<Response> {
+  const method = (init.method || 'GET').toUpperCase()
+  const retryAllowed = options.forceRetry || isMethodIdempotent(method)
+
+  // 写操作且未显式强制重试：直接走一次 fetch，不做任何重试
+  if (!retryAllowed) {
+    return fetch(input, { ...init, signal: options.signal ?? init.signal })
+  }
+
   const maxRetries = options.maxRetries ?? MAX_RETRIES
   const baseDelay = options.baseDelay ?? BASE_DELAY
   const signal = options.signal ?? init.signal
@@ -68,7 +95,6 @@ export async function fetchWithRetry(
       if (isRetryableStatus(res.status) && attempt < maxRetries) {
         options.onRetry?.(attempt + 1, new Error(`HTTP ${res.status}`))
         await delay(baseDelay * Math.pow(2, attempt), signal)
-        // body 可能已被消耗，重建 init
         continue
       }
       return res

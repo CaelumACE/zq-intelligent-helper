@@ -19,6 +19,8 @@ export interface Message {
   followUpChips?: string[];
   model?: string;
   structuredAnswer?: StructuredAnswer;
+  /** 流式警告，如内容被 max_tokens 截断 */
+  warning?: { code: string; message: string };
   status?: 'ok' | 'greeting' | 'self_intro' | 'capability' | 'thanks' | 'acknowledge' | 'farewell' | 'chat' | 'refusal' | 'out_of_scope' | 'writing' | 'service_card';
 }
 

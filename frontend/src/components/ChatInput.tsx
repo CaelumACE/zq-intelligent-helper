@@ -15,13 +15,15 @@ const MODEL_LABEL: Record<ModelProvider, string> = {
   deepseek: 'DeepSeek',
 }
 
-/** 仅桌面端（有精确指针/鼠标）返回 true，手机/平板等触摸设备返回 false */
+/**
+ * 仅桌面端返回 true：屏幕宽度 > 768px 且非触摸设备。
+ * 用宽度 + 非 coarse 指针双重判断，避免云桌面/部分环境下 pointer:fine 不触发。
+ */
 function isDesktop(): boolean {
   if (typeof window === 'undefined') return false
-  // 双重判断：有鼠标指针 + 可hover，比单 pointer:fine 更可靠
-  const finePointer = window.matchMedia('(pointer: fine)').matches
-  const canHover = window.matchMedia('(hover: hover)').matches
-  return finePointer && canHover
+  const isWide = window.innerWidth > 768
+  const isTouch = window.matchMedia('(pointer: coarse)').matches
+  return isWide && !isTouch
 }
 
 export default function ChatInput({ onSend, onStop, disabled = false, model, onModelChange }: ChatInputProps) {

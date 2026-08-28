@@ -779,7 +779,8 @@ async def chat_stream(request: ChatRequest, user: UserOut = Depends(current_user
             st_primary = request.provider or settings.LLM_PROVIDER
             st_status = {'ok': False}
             try:
-                async for delta in await llm_service.chat(smalltalk_msgs, stream=True, provider=st_primary, **_llm_params_for_intent('smalltalk')):
+                async for chunk in await llm_service.chat(smalltalk_msgs, stream=True, provider=st_primary, **_llm_params_for_intent('smalltalk')):
+                    delta = chunk.get("content") if isinstance(chunk, dict) else chunk
                     if delta:
                         accumulated_st.append(delta)
                         yield f"data: {json.dumps({'type': 'delta', 'content': delta}, ensure_ascii=False)}\n\n"
@@ -789,7 +790,8 @@ async def chat_stream(request: ChatRequest, user: UserOut = Depends(current_user
             if not st_status['ok'] or not accumulated_st:
                 try:
                     fb = settings.LLM_FALLBACK_PROVIDER
-                    async for delta in await llm_service.chat(smalltalk_msgs, stream=True, provider=fb, **_llm_params_for_intent('smalltalk')):
+                    async for chunk in await llm_service.chat(smalltalk_msgs, stream=True, provider=fb, **_llm_params_for_intent('smalltalk')):
+                        delta = chunk.get("content") if isinstance(chunk, dict) else chunk
                         if delta:
                             accumulated_st.append(delta)
                             yield f"data: {json.dumps({'type': 'delta', 'content': delta}, ensure_ascii=False)}\n\n"
@@ -815,22 +817,32 @@ async def chat_stream(request: ChatRequest, user: UserOut = Depends(current_user
             )
             accumulated_rev: List[str] = []
             rev_status = {"ok": False}
+            rev_truncated = False
             try:
-                async for delta in await llm_service.chat(messages, stream=True, provider=(request.provider or settings.LLM_PROVIDER), **_llm_params_for_intent('writing_revise')):
+                async for chunk in await llm_service.chat(messages, stream=True, provider=(request.provider or settings.LLM_PROVIDER), **_llm_params_for_intent('writing_revise')):
+                    delta = chunk.get("content") if isinstance(chunk, dict) else chunk
                     if delta:
                         accumulated_rev.append(delta)
                         yield f"data: {json.dumps({'type': 'delta', 'content': delta}, ensure_ascii=False)}\n\n"
+                    if isinstance(chunk, dict) and chunk.get("finish_reason") == "length":
+                        rev_truncated = True
                 rev_status["ok"] = True
             except Exception as e:
                 logger.warning(f"公文修改流式失败: {e}")
             if not rev_status["ok"] or not accumulated_rev:
+                rev_truncated = False
                 try:
-                    async for delta in await llm_service.chat(messages, stream=True, provider=settings.LLM_FALLBACK_PROVIDER, **_llm_params_for_intent('writing_revise')):
+                    async for chunk in await llm_service.chat(messages, stream=True, provider=settings.LLM_FALLBACK_PROVIDER, **_llm_params_for_intent('writing_revise')):
+                        delta = chunk.get("content") if isinstance(chunk, dict) else chunk
                         if delta:
                             accumulated_rev.append(delta)
                             yield f"data: {json.dumps({'type': 'delta', 'content': delta}, ensure_ascii=False)}\n\n"
+                        if isinstance(chunk, dict) and chunk.get("finish_reason") == "length":
+                            rev_truncated = True
                 except Exception as e2:
                     logger.warning(f"公文修改兜底流式也失败: {e2}")
+            if rev_truncated and accumulated_rev:
+                yield f"data: {json.dumps({'type': 'warning', 'code': 'truncated', 'message': '公文内容较长，已被截断。可点击「继续生成」或补充追问获取完整内容。'}, ensure_ascii=False)}\n\n"
             if not accumulated_rev:
                 fallback_rev = "抱歉，公文修改失败，请稍后重试。"
                 accumulated_rev.append(fallback_rev)
@@ -866,11 +878,15 @@ async def chat_stream(request: ChatRequest, user: UserOut = Depends(current_user
 
         # 主通道流式生成
         stream_ok = False
+        truncated = False
         try:
-            async for delta in await llm_service.chat(messages, stream=True, provider=primary_provider, **_llm_params_for_intent(intent)):
+            async for chunk in await llm_service.chat(messages, stream=True, provider=primary_provider, **_llm_params_for_intent(intent)):
+                delta = chunk.get("content") if isinstance(chunk, dict) else chunk
                 if delta:
                     accumulated.append(delta)
                     yield f"data: {json.dumps({'type': 'delta', 'content': delta}, ensure_ascii=False)}\n\n"
+                if isinstance(chunk, dict) and chunk.get("finish_reason") == "length":
+                    truncated = True
             if accumulated:
                 stream_ok = True
         except Exception as e:
@@ -878,18 +894,26 @@ async def chat_stream(request: ChatRequest, user: UserOut = Depends(current_user
 
         # 主通道失败或无输出时切换兜底通道
         if not stream_ok:
+            truncated = False
             if primary_provider == settings.LLM_FALLBACK_PROVIDER:
                 fallback_provider = settings.LLM_PROVIDER
             else:
                 fallback_provider = settings.LLM_FALLBACK_PROVIDER
             accumulated.clear()
             try:
-                async for delta in await llm_service.chat(messages, stream=True, provider=fallback_provider, **_llm_params_for_intent(intent)):
+                async for chunk in await llm_service.chat(messages, stream=True, provider=fallback_provider, **_llm_params_for_intent(intent)):
+                    delta = chunk.get("content") if isinstance(chunk, dict) else chunk
                     if delta:
                         accumulated.append(delta)
                         yield f"data: {json.dumps({'type': 'delta', 'content': delta}, ensure_ascii=False)}\n\n"
+                    if isinstance(chunk, dict) and chunk.get("finish_reason") == "length":
+                        truncated = True
             except Exception as e2:
                 logger.warning(f"fallback provider={fallback_provider} 流式也失败: {e2}")
+
+        # 输出被 max_tokens 截断时，向前端发 warning 事件
+        if truncated and accumulated:
+            yield f"data: {json.dumps({'type': 'warning', 'code': 'truncated', 'message': '回复内容较长，已被截断。可点击「继续生成」或补充追问获取完整内容。'}, ensure_ascii=False)}\n\n"
 
         # 双通道都不可用时，仅罗列知识库原文，不编造
         if not accumulated:

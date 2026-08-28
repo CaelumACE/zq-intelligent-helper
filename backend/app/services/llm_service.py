@@ -90,8 +90,8 @@ class LLMService:
             response.raise_for_status()
             return response.json()
 
-    async def _stream_response(self, url: str, headers: dict, payload: dict) -> AsyncGenerator:
-        """流式响应：仅产出增量文本片段。"""
+    async def _stream_response(self, url: str, headers: dict, payload: dict) -> AsyncGenerator[dict, None]:
+        """流式响应：产出 chunk dict {content, finish_reason}。"""
         async with httpx.AsyncClient(timeout=120.0, limits=LLMService._limits()) as client:
             async with client.stream("POST", url, headers=headers, json=payload) as response:
                 response.raise_for_status()
@@ -101,24 +101,34 @@ class LLMService:
                     data = line[5:].strip()
                     if not data or data == "[DONE]":
                         continue
-                    delta = self._parse_stream_delta(data)
-                    if delta:
-                        yield delta
+                    chunk = self._parse_stream_chunk(data)
+                    if chunk.get("content") or chunk.get("finish_reason"):
+                        yield chunk
 
     @staticmethod
-    def _parse_stream_delta(data: str) -> str:
-        """解析 SSE 增量文本，兼容 MiniMax 与 DeepSeek（delta.content）"""
+    def _parse_stream_chunk(data: str) -> dict:
+        """解析 SSE 增量，返回 {content, finish_reason}，兼容 MiniMax 与 DeepSeek。"""
         try:
             obj = json.loads(data)
         except Exception:
-            return ""
+            return {"content": "", "finish_reason": None}
         try:
-            delta = obj.get("choices", [{}])[0].get("delta") or {}
+            choice = (obj.get("choices") or [{}])[0] or {}
         except Exception:
-            return ""
-        return delta.get("content") or ""
+            return {"content": "", "finish_reason": None}
+        delta = choice.get("delta") or {}
+        content = delta.get("content") or ""
+        finish_reason = choice.get("finish_reason")
+        return {"content": content, "finish_reason": finish_reason}
+
+    async def stream_chunks(self, messages: list, provider: str | None = None, temperature: float | None = None, max_tokens: int | None = None) -> AsyncGenerator[dict, None]:
+        """流式接口：产出 chunk dict {content, finish_reason}，用于需要感知截断等状态的场景。"""
+        async for chunk in await self.chat(messages, stream=True, provider=provider, temperature=temperature, max_tokens=max_tokens):
+            yield chunk
 
     async def stream_text(self, messages: list, provider: str | None = None, temperature: float | None = None, max_tokens: int | None = None) -> AsyncGenerator:
-        """便捷流式接口：直接产出文本片段"""
-        async for delta in await self.chat(messages, stream=True, provider=provider, temperature=temperature, max_tokens=max_tokens):
-            yield delta
+        """便捷流式接口：直接产出文本片段（向后兼容）。"""
+        async for chunk in await self.chat(messages, stream=True, provider=provider, temperature=temperature, max_tokens=max_tokens):
+            content = chunk.get("content") if isinstance(chunk, dict) else chunk
+            if content:
+                yield content
