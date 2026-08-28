@@ -230,6 +230,65 @@ def _service_context_text(results) -> str:
             parts.append(f"[{r.get('title')}]\n{text}")
     return "\n\n".join(parts)
 
+def _service_node_roots(query: str) -> list:
+    """查询图谱，返回命中实体中的 service 根节点；图谱不可用时返回空列表。"""
+    try:
+        if not graph_store.stats().get("nodes"):
+            return []
+    except Exception:
+        return []
+    candidates = [query]
+    try:
+        _, alias_hit = knowledge_service.resolve_alias(query)
+        if alias_hit and alias_hit.get("canonical"):
+            candidates = list(alias_hit["canonical"]) + candidates
+    except Exception:
+        pass
+    roots = []
+    for candidate in candidates:
+        roots = graph_store.find_node(candidate, entity_types=["service"])
+        if roots:
+            break
+    return roots or []
+
+
+def _graph_service_answer(query: str) -> Optional[StructuredAnswer]:
+    """RAG 零召回时，用图谱命中的 service 实体兜底生成结构化办事卡片。
+
+    图谱节点的 properties 只存了说明/地点/时限/费用/电话；材料与流程以图节点承载，
+    因此这里优先回查知识库原始事项数据，保证卡片字段完整，缺失时再降级用图属性。
+    """
+    roots = _service_node_roots(query or "")
+    node = roots[0] if roots else None
+    if not node:
+        return None
+    props = node.get("properties") or {}
+    name = props.get("item_name") or node.get("name")
+    if not name:
+        return None
+    item = next(
+        (x for x in knowledge_service.documents.get("services", []) if x.get("item_name") == name),
+        None,
+    )
+    if not isinstance(item, dict):
+        return None
+    try:
+        return StructuredAnswer(
+            item_name=item.get("item_name") or name,
+            description=item.get("description"),
+            required_materials=[str(m) for m in (item.get("required_materials") or []) if str(m).strip()],
+            steps=[str(x) for x in (item.get("steps") or []) if str(x).strip()],
+            location=item.get("location"),
+            time_limit=item.get("time_limit"),
+            fee=item.get("fee"),
+            consult_phone=item.get("consult_phone"),
+        )
+    except Exception as exc:
+        logger.warning(f"图谱 service 兜底卡片构建失败: {exc}")
+        return None
+
+
+
 def _build_service_answer(search_results, message: str = "") -> Optional[StructuredAnswer]:
     """构建办事指南卡片结构化数据；非 service 结果或无原始事项时返回 None。"""
     try:
@@ -696,15 +755,37 @@ async def chat(request: ChatRequest, user: UserOut = Depends(current_user)):
 
         structured_answer = None
 
-        # 2. 无命中拒答
+        # 2. 无命中拒答；先尝试图谱 service 兜底，避免别名命中但 RAG 零召回的短句被直接拒答
         if not search_results:
-            if alias_hit and alias_hit.get('uncovered'):
-                content = _no_knowledge_response(context_query or request.message, alias_hit)
+            structured_answer = _graph_service_answer(request.message)
+            if structured_answer is not None:
+                messages = _build_service_llm_messages(request, session_id, structured_answer, user_id=user_id)
+                references = []
+                generation_start = time.time()
+                try:
+                    llm_response = await llm_service.chat(messages, stream=False, **_llm_params_for_intent('service'))
+                    content = _extract_content(llm_response)
+                except Exception as primary_error:
+                    logger.warning(f"图谱兜底主通道 LLM 失败，尝试兜底通道: {primary_error}")
+                    try:
+                        llm_response = await llm_service.chat(
+                            messages, stream=False,
+                            provider=settings.LLM_FALLBACK_PROVIDER,
+                            **_llm_params_for_intent('service'),
+                        )
+                        content = _extract_content(llm_response)
+                    except Exception as fallback_error:
+                        logger.warning(f"图谱兜底 LLM 也失败: {fallback_error}")
+                        content = "以下是该事项的办理指南："
+                generation_time = (time.time() - generation_start) * 1000
             else:
-                content = _out_of_scope_response()
-            generation_time = 0.0
-            references = []
-            logger.info(f"拒答（无知识库命中）: {request.message[:40]}")
+                if alias_hit and alias_hit.get('uncovered'):
+                    content = _no_knowledge_response(context_query or request.message, alias_hit)
+                else:
+                    content = _out_of_scope_response()
+                generation_time = 0.0
+                references = []
+                logger.info(f"拒答（无知识库命中）: {request.message[:40]}")
         else:
             if context is None:
                 if intent == 'service':
@@ -813,19 +894,22 @@ async def chat_stream(request: ChatRequest, user: UserOut = Depends(current_user
         context = _service_context_text(search_results)
     else:
         context = knowledge_service.build_context_from_results(search_results) if search_results else ""
+
+    # 图谱服务节点兜底：RAG 零召回但别名命中的短句，仍给出结构化办事卡片。
+    early_service = _graph_service_answer(context_query)
     graph_extra = _graph_context_for(context_query, intent)
     if graph_extra:
         context = (context + "\n\n" + graph_extra).strip()
-    structured_answer = _build_service_answer(search_results, request.message) if search_results else None
+    structured_answer = None
 
     # 元信息一次性下发
     meta = {
         "session_id": session_id,
-        "intent": "greeting" if is_greeting else ("follow_up" if is_follow_up else intent),
+        "intent": "early_service" if (early_service and not search_results) else ("greeting" if is_greeting else ("follow_up" if is_follow_up else intent)),
         "references": references,
         "hit_count": len(search_results),
-        "status": "smalltalk" if is_smalltalk else ("greeting" if is_greeting else ("writing" if writing_revise else ("refusal" if not search_results else ("writing" if intent == "writing" else "ok")))),
-        "structured_answer": structured_answer.model_dump() if structured_answer else None,
+        "status": "smalltalk" if is_smalltalk else ("greeting" if is_greeting else ("writing" if writing_revise else ("refusal" if (not search_results and not early_service) else ("writing" if intent == "writing" else "ok")))),
+        "structured_answer": early_service.model_dump() if early_service and not search_results else None,
     }
     follow_up_chips = _related_chips(search_results) if (search_results and references) else []
 
@@ -926,10 +1010,14 @@ async def chat_stream(request: ChatRequest, user: UserOut = Depends(current_user
             yield "data: [DONE]\n\n"
             return
 
+        # 图谱服务兜底：RAG 零召回但图谱命中服务实体时，先建卡片走正常对话分支。
+        if not search_results and early_service is not None and structured_answer is None:
+            structured_answer = early_service
+
         if structured_answer is not None:
             yield f"data: {json.dumps({'type': 'structured_answer', 'data': structured_answer.model_dump()}, ensure_ascii=False)}\n\n"
 
-        if not search_results:
+        if not search_results and structured_answer is None:
             refuse_text = _no_knowledge_response(context_query or request.message, alias_hit) if (alias_hit and alias_hit.get('uncovered')) else _out_of_scope_response()
             yield f"data: {json.dumps({'type': 'error', 'message': refuse_text}, ensure_ascii=False)}\n\n"
             yield f"data: {json.dumps({'type': 'done', 'session_id': session_id, 'references': [], 'status': 'refusal'}, ensure_ascii=False)}\n\n"
@@ -939,10 +1027,15 @@ async def chat_stream(request: ChatRequest, user: UserOut = Depends(current_user
             session_store.add_messages(session_id, [user_msg, assistant_msg], user_id=user_id)
             return
 
+        # 图谱兜底且 RAG 零召回时，按服务意图生成引导语，避免被分类为 policy/qa 后误用空上下文。
+        effective_intent = intent
+        if not search_results and structured_answer is not None:
+            effective_intent = 'service'
+
         if structured_answer is not None:
             messages = _build_service_llm_messages(request, session_id, structured_answer, user_id=user_id)
         else:
-            messages = _build_messages(request, session_id, intent, context, user_id=user_id)
+            messages = _build_messages(request, session_id, effective_intent, context, user_id=user_id)
         accumulated: List[str] = []
         primary_provider = request.provider or settings.LLM_PROVIDER
 
@@ -950,7 +1043,7 @@ async def chat_stream(request: ChatRequest, user: UserOut = Depends(current_user
         stream_ok = False
         truncated = False
         try:
-            async for chunk in await llm_service.chat(messages, stream=True, provider=primary_provider, **_llm_params_for_intent(intent)):
+            async for chunk in await llm_service.chat(messages, stream=True, provider=primary_provider, **_llm_params_for_intent(effective_intent)):
                 delta = chunk.get("content") if isinstance(chunk, dict) else chunk
                 if delta:
                     accumulated.append(delta)
@@ -971,7 +1064,7 @@ async def chat_stream(request: ChatRequest, user: UserOut = Depends(current_user
                 fallback_provider = settings.LLM_FALLBACK_PROVIDER
             accumulated.clear()
             try:
-                async for chunk in await llm_service.chat(messages, stream=True, provider=fallback_provider, **_llm_params_for_intent(intent)):
+                async for chunk in await llm_service.chat(messages, stream=True, provider=fallback_provider, **_llm_params_for_intent(effective_intent)):
                     delta = chunk.get("content") if isinstance(chunk, dict) else chunk
                     if delta:
                         accumulated.append(delta)
