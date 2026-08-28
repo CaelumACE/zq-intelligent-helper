@@ -15,6 +15,12 @@ const MODEL_LABEL: Record<ModelProvider, string> = {
   deepseek: 'DeepSeek',
 }
 
+/** 仅桌面端（有精确指针/鼠标）返回 true，手机/平板等触摸设备返回 false */
+function isDesktop(): boolean {
+  if (typeof window === 'undefined') return false
+  return window.matchMedia('(pointer: fine)').matches
+}
+
 export default function ChatInput({ onSend, onStop, disabled = false, model, onModelChange }: ChatInputProps) {
   const [value, setValue] = useState('')
   const [modelOpen, setModelOpen] = useState(false)
@@ -31,7 +37,7 @@ export default function ChatInput({ onSend, onStop, disabled = false, model, onM
   }, [value])
 
   useEffect(() => {
-    if (!disabled && prevDisabledRef.current) {
+    if (!disabled && prevDisabledRef.current && isDesktop()) {
       textareaRef.current?.focus()
     }
     prevDisabledRef.current = disabled
@@ -54,7 +60,7 @@ export default function ChatInput({ onSend, onStop, disabled = false, model, onM
     if (!content || disabled) return
     onSend(content)
     setValue('')
-    window.setTimeout(() => textareaRef.current?.focus(), 0)
+    window.setTimeout(() => { if (isDesktop()) textareaRef.current?.focus() }, 0)
   }
 
   const handlePrimary = () => {
@@ -83,8 +89,10 @@ export default function ChatInput({ onSend, onStop, disabled = false, model, onM
         )}
         <div className="input-wrapper">
           <textarea
-            ref={textareaRef}
-            autoFocus
+            ref={(el) => {
+              textareaRef.current = el
+              if (el && isDesktop()) el.focus()
+            }}
             value={value}
             onChange={(e) => setValue(e.target.value)}
             onKeyDown={handleKeyDown}
