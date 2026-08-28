@@ -914,6 +914,7 @@ async def chat_stream(request: ChatRequest, user: UserOut = Depends(current_user
     follow_up_chips = _related_chips(search_results) if (search_results and references) else []
 
     async def event_stream():
+        nonlocal structured_answer
         # 先发元信息和开始事件，前端可立即显示会话ID与引用数
         yield f"data: {json.dumps({'type': 'meta', **meta}, ensure_ascii=False)}\n\n"
 
