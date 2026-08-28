@@ -9,6 +9,59 @@
 
 ---
 
+## v1.1.0 — 2026-08-28（S05 RAG升级 + UI改版 + 隧道迁移 全量交付）
+
+> tag：`v1.1.0`（基于 commit `28e0fb8`）
+> 性质：S05 Sprint 全量交付，含 S05-p0 安全热修复后的全部功能、性能、UI、稳定性迭代。
+> QA：小钱全量回归 55 项（API 48 + UI 7），针对性回归 5 项，P0/P1 全部关闭。
+
+### 新增功能
+| 模块 | 内容 | 关键 commit |
+|---|---|---|
+| UI 视觉焕新 | 主界面 + 登录页全新视觉，对齐 V1.2 高保真原型 | `610fccd` |
+| 公文写作抽屉 | A 方案结构化面板：文种/标题/主送/正文/落款，一键生成 | `8e4026e` |
+| 知识库后台增强 | 检索测试面板、超管唯一性约束、doc_type 字段 | `765ce88`、`566b808` |
+| 前端网络重试 | 失败自动重试（指数退避），消息列表 content-visibility 性能优化 | `fd74b3e` |
+| 上传限制统一 | nginx + 后端统一 10MB | `6ad0924` |
+
+### 性能优化
+| 项目 | 内容 | 关键 commit |
+|---|---|---|
+| 后端并发 | async 优化、连接池、阻塞调用改造 | `373c70a` |
+| nginx 调优 | keepalive 连接复用 + gzip + 静态资源缓存 | `f2be1af` |
+| 前端渲染 | React.memo + 流式纯文本渲染 + CSS transition 治理 | `8bbf3ef` |
+| 流式 Markdown | 80ms 节流完整 marked.parse 渲染，解决 O(n²) | `e5e86de`、`7df5b8a` |
+
+### Bug 修复（P0/P1）
+| 优先级 | 问题 | 修复 | commit |
+|---|---|---|---|
+| 🔴 P0 | 公文写作对话栏入口用户 query 未透传 LLM，导致"国庆放假通知"生成冬季安全生产等无关内容 | `_build_writing_message()` 面板字段全空时透传 `request.message` | `28e0fb8` |
+| 🟡 P1 | SSE 流式请求绕过 apiFetch，401 不清理 token 不弹登录 | App.tsx SSE 连接检查 401，调用 handleUnauthorized() | `1c409ff` |
+| 🟡 P1 | MiniMax 输出 ` ```markdown ` 围栏时 marked 渲染为代码块，裸符号可见 | 新增 unwrapMarkdownFence() 自动剥离围栏 | `1c409ff` |
+| 🟡 P1 | compose 未透传 JWT/session/rate-limit 环境变量，多 worker 配置丢失 | f3a7b60 补齐 env 透传 | `f3a7b60` |
+| 🟢 P2 | 输入框桌面端自动聚焦未生效（部分 Chrome 版本 pointer:fine 不触发） | 改 `(pointer:fine) and (hover:hover)` 双重判断 | `1c409ff`、`e75711e` |
+| 🟢 P2 | 办事指南卡片 SSE 事件字段读取错误 | 独立事件读 evt.data 而非 evt.structured_answer | `928201f` |
+
+### 基础设施 / 部署
+- **隧道迁移**：Cloudflare Tunnel → cpolar 专业版 HK 节点，HTTPS + systemd 开机自启，解决大陆访问 CF 不稳定问题。
+- **固定域名**：`api.zqhelper.site`（CNAME → cpolar HK），`www.zqhelper.site`（Cloudflare Pages）。
+- **证书续期**：deploy hook 脚本自动重启 cpolar 隧道，证书过期自动续。
+- **VM 更新流程标准化**：`git fetch && reset --hard && docker compose up -d --build`。
+
+### 已知限制 / 入下一迭代
+- P2 输入框聚焦：云电脑桌面环境媒体查询可能不触发，建议后续改用屏幕宽度 + React ref 直接 focus。
+- 社保卡补办等事项知识库缺数据，后续补 aliases 映射和知识条目。
+- `/api/knowledge/documents` 列表缺 doc_type 字段（前端未使用，低优）。
+- cpolar HK 节点偶发 TTFB 抖动（~260ms），前端重试已缓解；彻底解决需迁移至香港云服务器直连。
+- 仓库 3 条脏数据（111/test1/test2）待小钱测试后清理。
+
+### QA 回归结果
+- **全量回归**：55 项（API 48 + UI 7），PASS 49，FAIL 6 → P0/P1 全修复。
+- **针对性回归**：公文写作（非流式+SSE）PASS、Markdown 渲染 PASS、401 处理 PASS、桌面端聚焦 FAIL（P2 不阻塞）。
+- **核心能力全过**：健康检查、三账号登录、JWT 鉴权、Rerank 链路、T2 办事卡片 6 场景 8 字段、SSE 事件序列、超管唯一、越权拦截、知识库 CRUD、互踢机制、安全头、上传限制、公开注册关闭、边界值。
+
+---
+
 ## v1.0-s05-p0 — 2026-08-27（P0 安全加固热修复）
 
 > tag：`v1.0-s05-p0`（基于 commit `eb1beba`，小孙打 tag）
@@ -161,4 +214,5 @@
 | `v1.0.0-stable` | `91c36f6` | 2026-08-24 | MVP 交付里程碑 |
 | `v1.0-s03` | `0040e96` | 2026-08-26 | S03 账号安全体系 |
 | `v1.0-s04` | `133664b` | 2026-08-26 | S04 公文对话式生成 |
-| `v1.0-s05-p0` | `eb1beba` | 2026-08-27 | P0 安全热修复 |
+| `v1.0-s05` | `eb1beba` | 2026-08-27 | S05 P0 安全热修复基线 |
+| `v1.1.0` | `28e0fb8` | 2026-08-28 | S05 全量交付（RAG升级+UI改版+隧道迁移） |
