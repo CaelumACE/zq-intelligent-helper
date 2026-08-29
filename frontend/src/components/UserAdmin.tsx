@@ -221,7 +221,7 @@ export default function UserAdmin({ onClose, currentUserId, currentUserRole }: {
                 return (
                   <tr key={u.id}>
                     <td className="ua-col-idx" style={{ color: '#9ca3af' }} data-label="序号">{(page - 1) * pageSize + idx + 1}</td>
-                    <td data-label="用户名">
+                    <td data-label="用户名" data-initial={u.username.charAt(0).toLowerCase()}>
                       {u.username}
                       {isSelf && <span style={{ color: '#2563eb', fontSize: 12, marginLeft: 6 }}>（当前账号）</span>}
                     </td>
@@ -230,16 +230,16 @@ export default function UserAdmin({ onClose, currentUserId, currentUserRole }: {
                         {ROLE_LABEL[u.role] || u.role}
                       </span>
                     </td>
-                    <td data-label="状态">
+                    <td data-label="状态" className={u.is_active ? 'ua-st-on' : 'ua-st-off'}>
                       <span className={`ua-dot ${u.is_active ? 'ua-dot-on' : 'ua-dot-off'}`} />
                       {u.is_active ? '启用' : '禁用'}
                     </td>
                     <td data-label="最近登录">{u.last_login ? new Date(u.last_login).toLocaleString('zh-CN') : '—'}</td>
                     <td className="ua-actions" data-label="操作">
                       {isSuperRow ? (
-                        <span style={{ color: '#d97706', fontSize: 12 }}>🔒 超级管理员受保护（全局唯一）</span>
+                        <span style={{ color: '#d97706', fontSize: 12 }}>🔒 受保护</span>
                       ) : u.role === 'admin' && !isSuper ? (
-                        <span style={{ color: '#9ca3af', fontSize: 12 }}>🔒 管理员账号不可操作</span>
+                        <span style={{ color: '#9ca3af', fontSize: 12 }}>🔒 不可操作</span>
                       ) : (
                         <>
                           <button className="ua-btn-sm" disabled={locked || isSelf} onClick={() => handleToggleActive(u)}>
@@ -349,3 +349,4 @@ export default function UserAdmin({ onClose, currentUserId, currentUserRole }: {
     </div>
   )
 }
+
