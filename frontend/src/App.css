@@ -198,7 +198,7 @@
 .ua-panel { background: #fff; border-radius: var(--radius-lg); width: 100%; max-width: 860px; max-height: 88vh; display: flex; flex-direction: column; box-shadow: var(--shadow-lg); overflow: hidden; overscroll-behavior: contain; }
 .ua-header { display: flex; align-items: center; justify-content: space-between; padding: 18px 22px; border-bottom: 1px solid var(--border); }
 .ua-header h2 { margin: 0; font-size: 17px; font-weight: 700; color: var(--text-primary); }
-.ua-close { background: none; border: none; font-size: 18px; cursor: pointer; color: var(--text-tertiary); padding: 4px 8px; border-radius: 6px; font-family: inherit; }
+.ua-close { background: #fff; border: 1px solid var(--border); font-size: 15px; cursor: pointer; color: var(--text-tertiary); width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: inherit; flex-shrink: 0; padding: 0; }
 .ua-close:hover { background: var(--bg-page); }
 .ua-toolbar { display: flex; gap: 10px; padding: 14px 22px; }
 .ua-search { flex: 1; padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 13px; outline: none; font-family: inherit; }
@@ -215,10 +215,12 @@
 .ua-table tr:hover { background: var(--bg-page); }
 .ua-badge { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; white-space: nowrap; }
 .ua-badge-admin { background: #fef3c7; color: #92400e; }
-.ua-badge-user { background: #e0e7ff; color: #3730a3; }
-.ua-badge-super { background: linear-gradient(135deg, #f59e0b, #d97706); color: #fff; }
+.ua-badge-user { background: #f1f5f9; color: #64748b; }
+.ua-badge-super { background: #ffedd5; color: #c2410c; }
 .ua-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
 .ua-dot-on { background: var(--success); }
+.ua-st-on { color: #16a34a; font-weight: 600; white-space: nowrap; }
+.ua-st-off { color: #dc2626; font-weight: 600; white-space: nowrap; }
 .ua-dot-off { background: var(--danger); }
 .ua-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 .ua-btn-sm { padding: 4px 10px; background: var(--bg-page); border: 1px solid var(--border); border-radius: 6px; font-size: 12px; cursor: pointer; color: var(--text-secondary); font-family: inherit; }
@@ -249,32 +251,75 @@
   .st-input { min-width: 100%; }
 }
 
-/* ===== 手机端用户管理适配 ===== */
+/* ===== 平板/手机端：用户卡片式布局（对齐V1.2原型） ===== */
+@media (max-width: 1024px) {
+  .ua-overlay { padding: 16px; }
+  .ua-panel { max-height: 92vh; border-radius: 14px; }
+  .ua-header { padding: 16px 18px; }
+  .ua-header h2 { font-size: 19px; }
+  .ua-toolbar { padding: 14px 18px; gap: 10px; }
+  .ua-search { flex: 1 1 auto; min-width: 0; padding: 11px 14px; border-radius: 10px; font-size: 14px; }
+  .ua-btn-primary { padding: 11px 18px; border-radius: 10px; font-size: 14px; }
+  .ua-error { margin: 0 18px 10px; }
+
+  .ua-table-wrap { overflow-x: hidden; padding: 4px 14px 14px; }
+  .ua-table thead { display: none; }
+  .ua-table, .ua-table tbody { display: block; }
+  .ua-table tr {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px;
+    background: #fff; border: 1px solid #e5e7eb; border-radius: 12px;
+    padding: 14px 16px; margin-bottom: 10px;
+  }
+  .ua-table tr:hover { background: #fff; }
+  .ua-table td { display: block; padding: 0; border: none; text-align: left; }
+  .ua-table td::before { content: none; }
+  .ua-table td.ua-col-idx { display: none; }
+
+  /* 第一行：头像 + 用户名 */
+  .ua-table td[data-label="用户名"] {
+    order: 1; flex: 1 1 auto; min-width: 0;
+    display: flex; align-items: center; gap: 10px;
+    font-size: 16px; font-weight: 700;
+  }
+  .ua-table td[data-label="用户名"]::before {
+    content: attr(data-initial);
+    width: 38px; height: 38px; border-radius: 50%;
+    background: #e0ecff; color: #2563eb;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; font-weight: 700; flex-shrink: 0;
+  }
+  /* 第一行右：角色 + 状态 */
+  .ua-table td[data-label="角色"] { order: 2; }
+  .ua-badge { padding: 3px 10px; border-radius: 8px; font-size: 12px; }
+  .ua-table td[data-label="状态"] { order: 3; font-size: 13px; }
+  /* 第二行左：最近登录 */
+  .ua-table td[data-label="最近登录"] { order: 4; flex: 1 1 auto; color: var(--text-tertiary); font-size: 12.5px; }
+  /* 第二行右：操作按钮 / 锁提示 */
+  .ua-table td.ua-actions { order: 5; flex: 0 0 auto; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+  .ua-actions .ua-btn-sm {
+    background: #fff; border: 1px solid #e5e7eb; border-radius: 8px;
+    padding: 6px 12px; font-size: 13px; color: #6b7280;
+  }
+  .ua-actions .ua-btn-sm.ua-btn-danger { color: #dc2626; border-color: #fecaca; }
+  .ua-actions .ua-btn-sm:disabled { opacity: 0.4; }
+
+  .ua-pager { padding: 12px 18px; font-size: 13px; }
+  .ua-modal-mask { padding: 16px; }
+  .ua-modal { width: calc(100vw - 48px); max-width: 380px; box-sizing: border-box; }
+}
+
 @media (max-width: 640px) {
-  .ua-overlay { padding: 12px; align-items: center; }
+  .ua-overlay { padding: 12px; }
   .ua-panel { max-height: 94vh; border-radius: 12px; }
   .ua-header { padding: 14px 16px; }
-  .ua-header h2 { font-size: 16px; }
-  .ua-toolbar { padding: 12px 16px; flex-wrap: wrap; gap: 8px; }
-  .ua-search { flex: 1 1 100%; box-sizing: border-box; }
-  .ua-btn-primary { flex: 1 1 auto; padding: 10px 16px; }
-  .ua-error { margin: 0 16px 10px; }
-
-  /* 表格变卡片列表 */
-  .ua-table-wrap { overflow-x: hidden; }
-  .ua-table thead { display: none; }
-  .ua-table, .ua-table tbody, .ua-table tr, .ua-table td { display: block; width: 100%; box-sizing: border-box; }
-  .ua-table tr { border-bottom: 1px solid var(--border); padding: 10px 16px; }
-  .ua-table tr:hover { background: transparent; }
-  .ua-table td { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 7px 0; border: none; text-align: right; }
-  .ua-table td::before { content: attr(data-label); color: var(--text-tertiary); font-size: 12px; flex-shrink: 0; text-align: left; }
-  .ua-table td.ua-col-idx { display: none; }
-  .ua-table td.ua-actions { justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
-  .ua-table td[data-label="最近登录"] { word-break: break-word; }
-
-  .ua-pager { flex-direction: column; gap: 8px; padding: 10px 16px; align-items: stretch; text-align: center; }
+  .ua-toolbar { padding: 12px 16px; }
+  .ua-table-wrap { padding: 4px 10px 10px; }
+  .ua-table tr { padding: 12px 14px; }
+  .ua-table td[data-label="用户名"] { font-size: 15px; }
+  .ua-table td[data-label="用户名"]::before { width: 34px; height: 34px; font-size: 15px; }
+  /* 手机端操作按钮独占一行靠右 */
+  .ua-table td.ua-actions { flex: 1 1 100%; }
+  .ua-pager { flex-direction: column; gap: 8px; align-items: stretch; text-align: center; }
   .ua-pager-controls { justify-content: center; flex-wrap: wrap; }
-
-  .ua-modal-mask { padding: 16px; }
-  .ua-modal { width: calc(100vw - 48px); max-width: 360px; box-sizing: border-box; }
+  .ua-modal { width: calc(100vw - 40px); }
 }
