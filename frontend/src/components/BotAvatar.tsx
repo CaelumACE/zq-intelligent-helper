@@ -13,13 +13,12 @@ export type BotState =
 
 /** 展演模式（欢迎页/登录页）自动编排的动作序列：idle 呼吸眨眼 → 轨道环绕 → comet 彗星 → burst 爆发 → wink */
 const ATTRACT_STEPS: { state: BotState; duration: number }[] = [
-  { state: 'idle', duration: 5.2 },
-  { state: 'orbit', duration: 4.6 },
-  { state: 'idle', duration: 2.2 },
-  { state: 'comet', duration: 3.4 },
-  { state: 'idle', duration: 2.2 },
-  { state: 'burst', duration: 2.4 },
-  { state: 'wink', duration: 1.6 },
+  { state: 'idle', duration: 3.2 },
+  { state: 'orbit', duration: 5.2 },
+  { state: 'wink', duration: 1.4 },
+  { state: 'comet', duration: 3.2 },
+  { state: 'burst', duration: 2.6 },
+  { state: 'wink', duration: 1.4 },
 ]
 
 interface BotAvatarProps {
@@ -44,6 +43,8 @@ interface BotAvatarProps {
    * 庆祝信号：值变化时播放一次 burst 爆发动画后回到 state（用于回答完成等瞬间反馈）。
    */
   celebrateSignal?: number
+  /** 轨道光环粗细增益（品牌展示位可传 1.4~1.6 让光环更醒目），默认 1 */
+  arcBoost?: number
   className?: string
   style?: CSSProperties
   title?: string
@@ -63,6 +64,7 @@ export default function BotAvatar({
   frozenAt,
   attract = false,
   celebrateSignal,
+  arcBoost = 1,
   className,
   style,
   title,
@@ -86,7 +88,6 @@ export default function BotAvatar({
   // inner：实际驱动引擎的状态（attract 编排 / celebrate 爆发时内部接管）
   const [inner, setInner] = useState<BotState>(attract ? ATTRACT_STEPS[0].state : state)
   const [frame, setFrame] = useState<BotFrame>(() => engine.sample(frozenAt ?? 0))
-  const visibleRef = useRef(true)
   const wrapRef = useRef<HTMLSpanElement | null>(null)
   const busyRef = useRef(false) // celebrate/attract 正在播放时，外部 state 不打断
   const timersRef = useRef<number[]>([])
@@ -108,10 +109,12 @@ export default function BotAvatar({
     setInner(state)
   }, [state, attract])
 
-  // 引擎跟随 inner 状态切换
+  // 引擎跟随 inner 状态切换；切换后立即采样一帧，画面不必等下一帧 RAF
   useEffect(() => {
     if (frozenAt !== undefined) return
-    engine.setState(inner, performance.now() / 1000)
+    const now = performance.now() / 1000
+    engine.setState(inner, now)
+    setFrame(engine.sample(now))
   }, [inner, engine, frozenAt])
 
   // 冻结帧
@@ -130,7 +133,7 @@ export default function BotAvatar({
     setInner('burst')
     timersRef.current.push(window.setTimeout(() => {
       busyRef.current = false
-      setInner(state)
+      setInner(stateRef.current)
     }, 2400))
     return clearTimers
   }, [celebrateSignal]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -152,35 +155,21 @@ export default function BotAvatar({
     return () => { cancelled = true; window.clearTimeout(timer) }
   }, [attract, frozenAt, animated])
 
-  // 视口外暂停（页面上头像多时省电）
-  useEffect(() => {
-    if (!animated || frozenAt !== undefined) return
-    const el = wrapRef.current
-    if (el && typeof IntersectionObserver !== 'undefined') {
-      const io = new IntersectionObserver(
-        (entries) => { visibleRef.current = entries[0]?.isIntersecting ?? true },
-        { threshold: 0.05 }
-      )
-      io.observe(el)
-      return () => io.disconnect()
-    }
-  }, [animated, frozenAt])
-
-  // 动画循环
+  // 动画循环（纯计算开销极小，不再做视口暂停：长列表 content-visibility 下
+  // IntersectionObserver 可能误判不可见导致帧更新停摆、画面卡在旧状态）
   useEffect(() => {
     if (!animated || frozenAt !== undefined) return
     let raf = 0
     let mounted = true
     const tick = () => {
       if (!mounted) return
-      if (visibleRef.current) {
-        setFrame(engine.sample(performance.now() / 1000))
-      }
+      setFrame(engine.sample(performance.now() / 1000))
       raf = requestAnimationFrame(tick)
     }
     raf = requestAnimationFrame(tick)
     return () => { mounted = false; cancelAnimationFrame(raf) }
   }, [animated, frozenAt, engine])
+
 
   const dotAttrs = (dot: BotFrame['dots'][number]) => {
     const fill = dot.color ?? (dot.depth === undefined ? ink : mixHex(paper, ink, dot.depth))
@@ -218,7 +207,7 @@ export default function BotAvatar({
         {/* 轨道后半（被身体遮挡） */}
         <g fill="none" strokeLinecap="round">
           {frame.arcs.map((arc) => (
-            <path key={`b${arc.id}`} d={arc.back} stroke={`url(#${uidRef.current}-${arc.id})`} strokeWidth={arc.width} opacity={arc.opacity} />
+            <path key={`b${arc.id}`} d={arc.back} stroke={`url(#${uidRef.current}-${arc.id})`} strokeWidth={arc.width * arcBoost} opacity={arc.opacity} />
           ))}
         </g>
 
@@ -249,7 +238,7 @@ export default function BotAvatar({
         {/* 轨道前半 */}
         <g fill="none" strokeLinecap="round">
           {frame.arcs.map((arc) => (
-            <path key={`f${arc.id}`} d={arc.front} stroke={`url(#${uidRef.current}-${arc.id})`} strokeWidth={arc.width} opacity={arc.opacity} />
+            <path key={`f${arc.id}`} d={arc.front} stroke={`url(#${uidRef.current}-${arc.id})`} strokeWidth={arc.width * arcBoost} opacity={arc.opacity} />
           ))}
         </g>
       </svg>
