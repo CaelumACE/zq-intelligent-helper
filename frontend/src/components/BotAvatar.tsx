@@ -11,6 +11,17 @@ export type BotState =
   | 'exclaim' | 'sleep' | 'egg' | 'hexagon' | 'play'
   | 'orbit' | 'burst' | 'comet' | 'swirl'
 
+/** 展演模式（欢迎页/登录页）自动编排的动作序列：idle 呼吸眨眼 → 轨道环绕 → comet 彗星 → burst 爆发 → wink */
+const ATTRACT_STEPS: { state: BotState; duration: number }[] = [
+  { state: 'idle', duration: 5.2 },
+  { state: 'orbit', duration: 4.6 },
+  { state: 'idle', duration: 2.2 },
+  { state: 'comet', duration: 3.4 },
+  { state: 'idle', duration: 2.2 },
+  { state: 'burst', duration: 2.4 },
+  { state: 'wink', duration: 1.6 },
+]
+
 interface BotAvatarProps {
   /** 渲染尺寸 px */
   size?: number
@@ -24,6 +35,15 @@ interface BotAvatarProps {
   animated?: boolean
   /** 静态帧：冻结在状态开始后 N 秒（设置后不跑动画循环） */
   frozenAt?: number
+  /**
+   * 展演模式：组件自动编排 idle → orbit 轨道环绕 → comet 彗星 → burst 爆发 循环播放。
+   * 用于欢迎页/登录页等品牌展示位；外部 state 仍优先（如登录中切 thinking）。
+   */
+  attract?: boolean
+  /**
+   * 庆祝信号：值变化时播放一次 burst 爆发动画后回到 state（用于回答完成等瞬间反馈）。
+   */
+  celebrateSignal?: number
   className?: string
   style?: CSSProperties
   title?: string
@@ -32,7 +52,7 @@ interface BotAvatarProps {
 /**
  * 政企智能助手官方吉祥物——bloub 智能小球（MIT 授权，源自 jeremy-prt/bloub）。
  * 一个会变形的 SVG 小球：14 种状态（idle/thinking/orbit/burst…），
- * 思考时环形轨道旋转，回答完回到 idle 眨眼呼吸。
+ * 思考时粒子脉冲，轨道环绕、彗星、爆发等展演状态让品牌位更生动。
  */
 export default function BotAvatar({
   size = 36,
@@ -41,6 +61,8 @@ export default function BotAvatar({
   paper = '#ffffff',
   animated = true,
   frozenAt,
+  attract = false,
+  celebrateSignal,
   className,
   style,
   title,
@@ -54,27 +76,81 @@ export default function BotAvatar({
   if (!engineRef.current) {
     engineRef.current = new BotEngine(
       R,
-      state,
+      attract ? ATTRACT_STEPS[0].state : state,
       null,
       EXPRESSION_BY_ID.get('neutre') ?? null
     )
   }
   const engine = engineRef.current
 
+  // inner：实际驱动引擎的状态（attract 编排 / celebrate 爆发时内部接管）
+  const [inner, setInner] = useState<BotState>(attract ? ATTRACT_STEPS[0].state : state)
   const [frame, setFrame] = useState<BotFrame>(() => engine.sample(frozenAt ?? 0))
   const visibleRef = useRef(true)
   const wrapRef = useRef<HTMLSpanElement | null>(null)
+  const busyRef = useRef(false) // celebrate/attract 正在播放时，外部 state 不打断
+  const timersRef = useRef<number[]>([])
+  const stateRef = useRef(state)
+  stateRef.current = state
 
-  // 状态切换
+  const clearTimers = () => {
+    timersRef.current.forEach((t) => window.clearTimeout(t))
+    timersRef.current = []
+  }
+
+  // 外部受控状态变化；attract 编排期间，外部显式切到非 idle（如登录中 thinking）仍优先
+  useEffect(() => {
+    if (busyRef.current) return
+    if (attract) {
+      if (state !== 'idle') setInner(state)
+      return
+    }
+    setInner(state)
+  }, [state, attract])
+
+  // 引擎跟随 inner 状态切换
   useEffect(() => {
     if (frozenAt !== undefined) return
-    engine.setState(state, performance.now() / 1000)
-  }, [state, engine, frozenAt])
+    engine.setState(inner, performance.now() / 1000)
+  }, [inner, engine, frozenAt])
 
   // 冻结帧
   useEffect(() => {
     if (frozenAt !== undefined) setFrame(engine.sample(frozenAt))
   }, [frozenAt, engine])
+
+  // 庆祝信号：burst 爆发一次后回到外部 state
+  const lastCelebrateRef = useRef<number | undefined>(celebrateSignal)
+  useEffect(() => {
+    if (celebrateSignal === undefined || celebrateSignal === lastCelebrateRef.current) return
+    lastCelebrateRef.current = celebrateSignal
+    if (frozenAt !== undefined || !animated) return
+    clearTimers()
+    busyRef.current = true
+    setInner('burst')
+    timersRef.current.push(window.setTimeout(() => {
+      busyRef.current = false
+      setInner(state)
+    }, 2400))
+    return clearTimers
+  }, [celebrateSignal]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 展演模式：自动编排 orbit/comet/burst 等状态循环
+  useEffect(() => {
+    if (!attract || frozenAt !== undefined || !animated) return
+    let cancelled = false
+    let idx = 0
+    let timer = 0
+    const run = () => {
+      if (cancelled) return
+      const step = ATTRACT_STEPS[idx % ATTRACT_STEPS.length]
+      if (!busyRef.current && stateRef.current === 'idle') setInner(step.state)
+      idx += 1
+      timer = window.setTimeout(run, step.duration * 1000)
+    }
+    timer = window.setTimeout(run, 600)
+    return () => { cancelled = true; window.clearTimeout(timer) }
+  }, [attract, frozenAt, animated])
 
   // 视口外暂停（页面上头像多时省电）
   useEffect(() => {
@@ -115,7 +191,7 @@ export default function BotAvatar({
   }
 
   return (
-    <span ref={wrapRef} className={className} style={{ display: 'inline-flex', lineHeight: 0, flexShrink: 0, ...style }} title={title}>
+    <span ref={wrapRef} className={className} style={{ display: 'inline-flex', lineHeight: 0, flexShrink: 0, position: 'relative', ...style }} title={title}>
       <svg width={size} height={size} viewBox={`${-VB} ${-VB} ${VB * 2} ${VB * 2}`} role="img" aria-label={title || '智能助手'}>
         <defs>
           <mask id={maskId} maskUnits="userSpaceOnUse" x={-VB} y={-VB} width={VB * 2} height={VB * 2}>
