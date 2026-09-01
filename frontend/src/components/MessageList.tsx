@@ -6,6 +6,7 @@ import { apiFetch, API_BASE } from '../utils/api'
 import MarkdownContent from './MarkdownContent'
 import ServiceCard from './ServiceCard'
 import Icon from './Icons'
+import BotAvatar from './BotAvatar'
 
 const COLLAPSE_THRESHOLD = 300
 const COLLAPSE_PREVIEW = 200
@@ -135,7 +136,11 @@ const MessageItem = memo(function MessageItem({
 
   return (
     <div className={`msg-item ${isUser ? 'user' : 'assistant'}`}>
-      <div className="msg-avatar">{isUser ? '我' : '政'}</div>
+      {isUser ? (
+        <div className="msg-avatar">我</div>
+      ) : (
+        <BotAvatar className="msg-avatar msg-avatar-bot" size={36} state={streaming ? 'thinking' : 'idle'} animated={!!streaming} frozenAt={streaming ? undefined : 1} />
+      )}
       <div className="msg-body">
         <div className={`msg-bubble${isWriting ? ' writing-doc' : ''}`}>
           <MarkdownContent content={shownContent} streaming={streaming} />
@@ -286,7 +291,7 @@ export default function MessageList({ messages, isLoading, isStreaming = false, 
       ))}
       {isLoading && (
         <div className="msg-item assistant">
-          <div className="msg-avatar">政</div>
+          <BotAvatar className="msg-avatar msg-avatar-bot" size={36} state="thinking" />
           <div className="msg-body">
             <div className="msg-bubble">
               <span className="typing-indicator">
@@ -304,3 +309,4 @@ export default function MessageList({ messages, isLoading, isStreaming = false, 
     </div>
   )
 }
+
