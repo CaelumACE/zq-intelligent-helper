@@ -117,10 +117,12 @@ export default function BotAvatar({
     setFrame(engine.sample(now))
   }, [inner, engine, frozenAt])
 
-  // 冻结帧
+  // 冻结帧（静态头像）：先确保引擎状态与 state prop 一致，避免沿用组件复用时的旧状态
   useEffect(() => {
-    if (frozenAt !== undefined) setFrame(engine.sample(frozenAt))
-  }, [frozenAt, engine])
+    if (frozenAt === undefined) return
+    engine.setState(state, 0)
+    setFrame(engine.sample(frozenAt))
+  }, [frozenAt, engine, state])
 
   // 庆祝信号：burst 爆发一次后回到外部 state
   const lastCelebrateRef = useRef<number | undefined>(celebrateSignal)
