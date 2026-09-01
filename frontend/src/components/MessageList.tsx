@@ -297,6 +297,7 @@ export default function MessageList({ messages, isLoading, isStreaming = false, 
           onRegenerate={onRegenerate}
           onFollowUp={onFollowUp}
           allMessages={msg.id === latestAiId ? stableMessages : EMPTY_ARRAY}
+          celebrate={msg.id === latestAiId ? celebrateSeq : undefined}
         />
       ))}
       {isLoading && (
