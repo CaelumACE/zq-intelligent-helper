@@ -569,17 +569,17 @@ body {
   margin-bottom: 28px;
 }
 .hero-avatar {
-  width: 72px;
-  height: 72px;
+  width: 84px;
+  height: 84px;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--gov-blue), var(--gov-blue-hover));
+  background: radial-gradient(circle at 32% 28%, var(--gov-blue-hover), var(--gov-blue));
   color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 28px;
-  font-weight: 600;
   margin: 0 auto 18px;
+  box-shadow: 0 10px 28px rgba(12, 74, 110, 0.28);
+  overflow: visible;
   box-shadow: var(--shadow-md);
 }
 .hero-title {
@@ -734,9 +734,13 @@ body {
   color: #fff;
 }
 .msg-item.assistant .msg-avatar {
-  background: linear-gradient(135deg, var(--gov-blue), var(--gov-blue-hover));
-  color: #fff;
+  background: #fff;
+  color: var(--gov-blue);
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 1px 4px rgba(12, 74, 110, 0.08);
 }
+/* 吉祥物头像由 BotAvatar SVG 自绘，容器只做居中 */
+.msg-avatar-bot { background: transparent !important; border: none !important; box-shadow: none !important; display: flex; align-items: center; justify-content: center; padding: 0; overflow: visible; }
 .msg-body {
   flex: 1;
   min-width: 0;
@@ -1942,3 +1946,4 @@ body {
   cursor: pointer;
 }
 .error-boundary-btn:hover { background: #0a3d5c; }
+
