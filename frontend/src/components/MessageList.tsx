@@ -1,4 +1,4 @@
-import { memo, useState, useMemo } from 'react'
+import { memo, useState, useMemo, useEffect, useRef } from 'react'
 import type { Message } from '../types'
 import { copyText } from '../utils/clipboard'
 import { pickFollowUpChips, isRefusalReply } from '../utils/followUpChips'
@@ -31,6 +31,7 @@ const MessageItem = memo(function MessageItem({
   onRegenerate,
   onFollowUp,
   allMessages,
+  celebrate,
 }: {
   message: Message
   isLatest: boolean
@@ -39,6 +40,7 @@ const MessageItem = memo(function MessageItem({
   onRegenerate?: (content: string) => void
   onFollowUp?: (prompt: string) => void
   allMessages: Message[]
+  celebrate?: number
 }) {
   const [showRefs, setShowRefs] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -139,7 +141,7 @@ const MessageItem = memo(function MessageItem({
       {isUser ? (
         <div className="msg-avatar">我</div>
       ) : (
-        <BotAvatar className="msg-avatar msg-avatar-bot" size={36} state={streaming ? 'thinking' : 'idle'} animated={!!streaming} frozenAt={streaming ? undefined : 1} />
+        <BotAvatar className="msg-avatar msg-avatar-bot" size={40} state={streaming ? 'thinking' : 'idle'} celebrateSignal={celebrate} />
       )}
       <div className="msg-body">
         <div className={`msg-bubble${isWriting ? ' writing-doc' : ''}`}>
@@ -264,6 +266,14 @@ const MessageItem = memo(function MessageItem({
 export default function MessageList({ messages, isLoading, isStreaming = false, currentSessionId, onStop, onRegenerate, onFollowUp }: MessageListProps) {
   const active = isLoading || isStreaming
 
+  // 流式回答结束瞬间，让最新 AI 头像播放一次 burst 爆发庆祝
+  const [celebrateSeq, setCelebrateSeq] = useState(0)
+  const wasStreamingRef = useRef(false)
+  useEffect(() => {
+    if (wasStreamingRef.current && !isStreaming) setCelebrateSeq((n) => n + 1)
+    wasStreamingRef.current = isStreaming
+  }, [isStreaming])
+
   const latestAiId = (() => {
     for (let i = messages.length - 1; i >= 0; i--) {
       if (messages[i].role === 'assistant') return messages[i].id
@@ -291,7 +301,7 @@ export default function MessageList({ messages, isLoading, isStreaming = false, 
       ))}
       {isLoading && (
         <div className="msg-item assistant">
-          <BotAvatar className="msg-avatar msg-avatar-bot" size={36} state="thinking" />
+          <BotAvatar className="msg-avatar msg-avatar-bot" size={40} state="thinking" />
           <div className="msg-body">
             <div className="msg-bubble">
               <span className="typing-indicator">
