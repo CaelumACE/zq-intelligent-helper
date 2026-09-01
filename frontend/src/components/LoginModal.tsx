@@ -53,7 +53,7 @@ export default function LoginModal({ onLogin, onClose, fullscreen }: LoginModalP
   const card = (
     <div className={fullscreen ? 'login-card' : 'login-card login-card-modal'} onClick={(e) => e.stopPropagation()}>
       <div className="login-logo">
-        <BotAvatar size={52} state={loading ? 'thinking' : 'idle'} ink="#ffffff" paper="#0c4a6e" attract={!loading} title="政企智能助手" />
+        <BotAvatar size={52} state={loading ? 'thinking' : 'idle'} ink="#ffffff" paper="#0c4a6e" attract={!loading} arcBoost={1.4} title="政企智能助手" />
       </div>
       <div className="login-title">政企智能助手</div>
       <div className="login-subtitle">安全登录 · 智启政务</div>
