@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { API_BASE } from '../utils/api'
 import type { AuthUser } from '../types'
+import BotAvatar from './BotAvatar'
 
 interface LoginModalProps {
   onLogin: (token: string, user: AuthUser) => void
@@ -51,12 +52,8 @@ export default function LoginModal({ onLogin, onClose, fullscreen }: LoginModalP
 
   const card = (
     <div className={fullscreen ? 'login-card' : 'login-card login-card-modal'} onClick={(e) => e.stopPropagation()}>
-      <div className="login-logo" aria-hidden="true">
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M3 21h18" />
-          <path d="M5 21V7l7-4 7 4v14" />
-          <path d="M9 21v-6h6v6" />
-        </svg>
+      <div className="login-logo">
+        <BotAvatar size={44} state="idle" ink="#ffffff" paper="#0c4a6e" title="政企智能助手" />
       </div>
       <div className="login-title">政企智能助手</div>
       <div className="login-subtitle">安全登录 · 智启政务</div>
@@ -147,3 +144,4 @@ export default function LoginModal({ onLogin, onClose, fullscreen }: LoginModalP
     </div>
   )
 }
+
