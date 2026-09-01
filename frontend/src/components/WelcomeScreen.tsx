@@ -1,5 +1,6 @@
 import { quickActions } from '../utils/mockData'
 import Icon from './Icons'
+import BotAvatar from './BotAvatar'
 
 interface WelcomeScreenProps {
   onQuickAction: (prompt: string) => void
@@ -17,7 +18,7 @@ export default function WelcomeScreen({ onQuickAction, disabled = false }: Welco
   return (
     <div className="chat-inner welcome-inner">
       <div className="chat-hero">
-        <div className="hero-avatar">政</div>
+        <BotAvatar className="hero-avatar" size={68} state="idle" ink="#ffffff" paper="#0c4a6e" title="政企智能助手" />
         <h1 className="hero-title">您好，我是<span>政企智能助手</span></h1>
         <p className="hero-subtitle">把公文撰写、政策咨询与办事指引，交给政企一次完成。基于权威政策库，确保答案可溯源、可落地。</p>
       </div>
@@ -50,3 +51,4 @@ export default function WelcomeScreen({ onQuickAction, disabled = false }: Welco
     </div>
   )
 }
+
